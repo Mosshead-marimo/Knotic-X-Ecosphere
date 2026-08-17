@@ -14,6 +14,7 @@ node_modules/
 out/
 dist/
 .turbo/
+*.tsbuildinfo
 .npm/
 npm-debug.log*
 yarn-debug.log*
@@ -29,6 +30,7 @@ __pycache__/
 venv/
 env/
 .uv-cache/
+.uv-python/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
@@ -61,4 +63,3 @@ docker-data/
 .terraform/
 *.tfstate
 *.tfstate.*
-

@@ -339,6 +339,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Parsed both JSON manifests; uv parsed the Python workspace and stopped only at the intentionally absent `uv.lock`; confirmed all required component and entry-point paths; confirmed there are no nested repositories, secret-like files, dependency directories, build outputs, or retained validation caches; created the initial commit on `main`; cloned it without hard links into an isolated temporary checkout; confirmed the checkout was on `main`, clean, structurally complete, and had valid JSON manifests; removed the verified temporary checkout.
 - Follow-up: Complete `P0-T002` to provision supported runtimes, dependencies, scripts, and committed lockfiles.
 
+### 2026-08-17 — Pinned runtimes and reproducible dependencies
+
+- Phase: 0 (`P0-T002`)
+- Status: Added
+- Files: Runtime pin files, root/component manifests, `package-lock.json`, `uv.lock`, `.npmrc`, `.github/dependabot.yml`, `infra/runtime-versions.env`, `scripts/verify-js-runtime.mjs`, `docs/DEPENDENCY_POLICY.md`, component READMEs, and task status
+- Summary: Pinned Node.js 24.19.0 with npm 11.17.0, Python 3.13.14 with uv 0.12.2, PostgreSQL 17.10, pgvector 0.8.6, Redis 8.8.1, exact frontend/Python direct dependencies, future container bases, and weekly npm/uv dependency updates. Added committed universal lockfiles, strict runtime enforcement, uv malware checking, and dependency audit policy.
+- Verification: Generated both lockfiles with the pinned toolchains; completed two clean npm and uv installs; confirmed the unsupported local Node 22/npm 10 pair fails with actionable version messages; verified the pinned Node/npm pair; passed TypeScript checking and a Next.js 16.3.1 production build; verified Python 3.13.14 and all required application imports; confirmed uv lock consistency; npm audit found zero vulnerabilities; pip-audit found no known third-party vulnerabilities and skipped only the two local non-PyPI workspace packages; removed all generated environments, build output, caches, and temporary tool distributions.
+- Follow-up: Complete `P0-T003` to implement typed environment configuration, startup validation, secret-provider boundaries, and redaction.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

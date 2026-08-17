@@ -18,7 +18,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Each component has a clear entry point, owner, and dependency boundary; no generated secrets or build output are committed.
 - Verify: Repository tree review and clean bootstrap on a fresh checkout.
 
-### [ ] P0-T002 — Pin supported runtimes and dependencies
+### [x] P0-T002 — Pin supported runtimes and dependencies
 
 - Dependencies: P0-T001.
 - Implement: Pin Node, Python, package-manager, database, Redis, and container versions; commit lockfiles; configure automated dependency updates and vulnerability reporting.

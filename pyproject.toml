@@ -1,3 +1,21 @@
+[project]
+name = "knotic-python-workspace"
+version = "0.0.0"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pip-audit==2.10.1",
+]
+
+[tool.uv]
+package = false
+required-version = "==0.12.2"
+python-preference = "managed"
+
+[tool.uv.audit]
+malware-check = true
+
 [tool.uv.workspace]
 members = ["backend", "mcp"]
-

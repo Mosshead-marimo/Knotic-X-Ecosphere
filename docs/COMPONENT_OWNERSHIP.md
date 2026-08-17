@@ -36,9 +36,9 @@ Frontend -> Flask backend -> LangGraph -> MCP client -> MCP service -> providers
 | `frontend/` | Frontend and realtime browser experience |
 | `backend/` | Flask API, sessions, state composition, and LangGraph |
 | `mcp/` | MCP gateway, tools, policies, and provider adapters |
+| `packages/config/` | Shared pure configuration, secret-provider, and redaction primitives |
 | `infra/` | Container, deployment, and observability configuration |
 | `tests/` | Cross-service verification |
 | `docs/` | Product, architecture, contracts, task planning, and audit history |
 
 Named human owners and on-call escalation are established in operational readiness work. Until then, changes require review from the engineer responsible for the affected boundary and every downstream contract consumer.
-

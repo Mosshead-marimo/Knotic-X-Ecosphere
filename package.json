@@ -25,6 +25,7 @@
     "dev": "npm run dev --workspace @knotic/frontend",
     "start": "npm run start --workspace @knotic/frontend",
     "typecheck": "npm run typecheck --workspace @knotic/frontend",
+    "scan:frontend-secrets": "node scripts/scan-frontend-secrets.mjs",
     "audit:dependencies": "npm audit --audit-level=high"
   },
   "workspaces": [

@@ -6,6 +6,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "flask==3.1.3",
     "gunicorn==26.0.0",
+    "knotic-config==0.0.0",
     "langgraph==1.2.11",
     "mcp==2.0.0",
     "pgvector==0.5.0",
@@ -21,3 +22,6 @@ knotic-api = "knotic_api.__main__:main"
 [build-system]
 requires = ["uv_build==0.12.2"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+knotic-config = { workspace = true }

@@ -5,6 +5,7 @@ requires-python = "==3.13.*"
 [manifest]
 members = [
     "knotic-api",
+    "knotic-config",
     "knotic-mcp",
     "knotic-python-workspace",
 ]
@@ -497,6 +498,7 @@ source = { editable = "backend" }
 dependencies = [
     { name = "flask" },
     { name = "gunicorn" },
+    { name = "knotic-config" },
     { name = "langgraph" },
     { name = "mcp" },
     { name = "pgvector" },
@@ -510,6 +512,7 @@ dependencies = [
 requires-dist = [
     { name = "flask", specifier = "==3.1.3" },
     { name = "gunicorn", specifier = "==26.0.0" },
+    { name = "knotic-config", editable = "packages/config" },
     { name = "langgraph", specifier = "==1.2.11" },
     { name = "mcp", specifier = "==2.0.0" },
     { name = "pgvector", specifier = "==0.5.0" },
@@ -520,10 +523,26 @@ requires-dist = [
 ]
 
 [[package]]
+name = "knotic-config"
+version = "0.0.0"
+source = { editable = "packages/config" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = "==2.13.4" },
+    { name = "pydantic-settings", specifier = "==2.15.0" },
+]
+
+[[package]]
 name = "knotic-mcp"
 version = "0.0.0"
 source = { editable = "mcp" }
 dependencies = [
+    { name = "knotic-config" },
     { name = "mcp" },
     { name = "pydantic" },
     { name = "uvicorn", extra = ["standard"] },
@@ -531,6 +550,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "knotic-config", editable = "packages/config" },
     { name = "mcp", specifier = "==2.0.0" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.52.3" },
@@ -1037,6 +1057,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/24/b375a480d53113860c299764bfe9f349a3dc9108b3adc0d7f0d786492ebf/pydantic_core-2.46.4-cp313-cp313-win32.whl", hash = "sha256:9fa8ae11da9e2b3126c6426f147e0fba88d96d65921799bb30c6abd1cb2c97fb", size = 1973693, upload-time = "2026-05-06T13:37:55.072Z" },
     { url = "https://files.pythonhosted.org/packages/7e/e8/cff247591966f2d22ec8c003cd7587e27b7ba7b81ab2fb888e3ab75dc285/pydantic_core-2.46.4-cp313-cp313-win_amd64.whl", hash = "sha256:6b3ace8194b0e5204818c92802dcdca7fc6d88aabbb799d7c795540d9cd6d292", size = 2071819, upload-time = "2026-05-06T13:38:49.139Z" },
     { url = "https://files.pythonhosted.org/packages/c6/1a/f4aee670d5670e9e148e0c82c7db98d780be566c6e6a97ee8035528ca0b3/pydantic_core-2.46.4-cp313-cp313-win_arm64.whl", hash = "sha256:184c081504d17f1c1066e430e117142b2c77d9448a97f7b65c6ac9fd9aee238d", size = 2027411, upload-time = "2026-05-06T13:40:45.796Z" },
+]
+
+[[package]]
+name = "pydantic-settings"
+version = "2.15.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/68/ca/31c57507b13119d7d3cfa1576dad2911a4861e3be07b579395f4e9d393f9/pydantic_settings-2.15.0.tar.gz", hash = "sha256:694b793e84f766ba76a90ebdefc01d0a9a045dab0382bee70393da93712ad117", size = 261253, upload-time = "2026-08-07T09:24:57.419Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/30/a4/2bffa9f8e804325a09867f0e9d30795c80ea9f8d62560bd1b6ad6220eb2f/pydantic_settings-2.15.0-py3-none-any.whl", hash = "sha256:0ba092c291c94baceb5eff768aa0d56400a457585bc0175925a5a5510303da42", size = 69413, upload-time = "2026-08-07T09:24:55.839Z" },
 ]
 
 [[package]]

@@ -348,6 +348,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Generated both lockfiles with the pinned toolchains; completed two clean npm and uv installs; confirmed the unsupported local Node 22/npm 10 pair fails with actionable version messages; verified the pinned Node/npm pair; passed TypeScript checking and a Next.js 16.3.1 production build; verified Python 3.13.14 and all required application imports; confirmed uv lock consistency; npm audit found zero vulnerabilities; pip-audit found no known third-party vulnerabilities and skipped only the two local non-PyPI workspace packages; removed all generated environments, build output, caches, and temporary tool distributions.
 - Follow-up: Complete `P0-T003` to implement typed environment configuration, startup validation, secret-provider boundaries, and redaction.
 
+### 2026-08-17 — Added production configuration and secret model
+
+- Phase: 0 (`P0-T003`)
+- Status: Added
+- Files: `.env.example`, `packages/config`, backend and MCP configuration/startup modules and tests, `scripts/scan-frontend-secrets.mjs`, `docs/CONFIGURATION.md`, manifests and `uv.lock`, component documentation, and task status
+- Summary: Added shared typed environment models, explicit-only environment-file loading, environment and mapping secret providers, required/optional secret resolution, masked configuration errors, recursive structured log redaction, exact-secret replacement, backend and MCP startup validation, production debug/origin/host restrictions including loopback rejection, rotation overlap fields and guidance, and source/production-bundle credential scanning.
+- Verification: Locked and installed the 105-package Python workspace with malware checking; passed 16 configuration/provider/redaction/fail-fast tests; confirmed explicit environment files load only when supplied; confirmed malformed secret summaries never echo submitted values; passed TypeScript checking and a Next.js 16.3.1 production build; scanner self-test proved detection and the real source/server/static bundle scan passed across 93 files; npm reported zero vulnerabilities during the locked install; pip-audit found no known third-party vulnerabilities and skipped only the three local workspace packages; confirmed the uv lock is current.
+- Follow-up: Complete `P0-T004` and record decisions for the deployment secret manager, identity model, provider-specific rotation mechanisms, and logging/observability backend.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

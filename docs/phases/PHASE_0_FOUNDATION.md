@@ -25,7 +25,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Repeated clean installs resolve identical versions; unsupported runtime versions fail with a useful message.
 - Verify: Clean frontend/backend install, lockfile consistency, dependency audit.
 
-### [ ] P0-T003 — Create production configuration and secret model
+### [x] P0-T003 — Create production configuration and secret model
 
 - Dependencies: P0-T001.
 - Implement: Typed configuration loading, environment separation, `.env.example`, startup validation, secret-provider interface, key rotation guidance, and log redaction.

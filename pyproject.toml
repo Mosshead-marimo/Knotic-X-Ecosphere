@@ -18,4 +18,4 @@ python-preference = "managed"
 malware-check = true
 
 [tool.uv.workspace]
-members = ["backend", "mcp"]
+members = ["backend", "mcp", "packages/config"]

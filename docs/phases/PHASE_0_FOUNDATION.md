@@ -32,7 +32,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Missing or malformed required configuration fails fast; server credentials never enter frontend bundles or logs.
 - Verify: Configuration unit tests and production bundle secret scan.
 
-### [ ] P0-T004 — Define architecture decisions
+### [x] P0-T004 — Define architecture decisions
 
 - Dependencies: P0-T001.
 - Implement: `docs/ARCHITECTURE_DECISIONS.md` covering service boundaries, deployment topology, identity, model/provider choices, realtime voice path, failure strategy, and rejected alternatives.

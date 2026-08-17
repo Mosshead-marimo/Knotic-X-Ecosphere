@@ -357,6 +357,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Locked and installed the 105-package Python workspace with malware checking; passed 16 configuration/provider/redaction/fail-fast tests; confirmed explicit environment files load only when supplied; confirmed malformed secret summaries never echo submitted values; passed TypeScript checking and a Next.js 16.3.1 production build; scanner self-test proved detection and the real source/server/static bundle scan passed across 93 files; npm reported zero vulnerabilities during the locked install; pip-audit found no known third-party vulnerabilities and skipped only the three local workspace packages; confirmed the uv lock is current.
 - Follow-up: Complete `P0-T004` and record decisions for the deployment secret manager, identity model, provider-specific rotation mechanisms, and logging/observability backend.
 
+### 2026-08-17 — Defined binding production architecture decisions
+
+- Phase: 0 (`P0-T004`)
+- Status: Documented
+- Files: `docs/ARCHITECTURE_DECISIONS.md`, `docs/phases/PHASE_0_FOUNDATION.md`, `README.md`
+- Summary: Accepted ten owned architecture decisions covering service and deployable-process boundaries, production topology and trust zones, human/browser/workload identity, initial OpenAI model and embedding adapters, the Agora realtime media and deterministic barge-in path, Redis/PostgreSQL/pgvector authority, safe failure and transactional truth, managed secrets and rotation, OpenTelemetry-based observability and durable audit, and compatible contract/provider evolution. Each decision records context, choice, consequences, status, owner, rejected alternatives, and required follow-through.
+- Verification: Cross-checked all decisions against the mandatory stack and ownership rules in `AGENTS.md`, every functional and non-functional requirement in `REQUIREMENTS.md`, all canonical architecture, runtime, data, MCP, RAG, handoff, and failure sections in `System_Design.md`, and the established configuration/rotation boundary. Confirmed every accepted ADR contains the six required fields and traceability covers FR-01 through FR-14 plus every non-functional requirement. Verified current model capability statements against official provider documentation; account availability and production approval remain deployment gates.
+- Follow-up: Complete `P0-T005`; `P0-T008` must select the environment-specific production platform, secret-manager adapter, managed data services, regions, and telemetry backend before production deployment approval.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

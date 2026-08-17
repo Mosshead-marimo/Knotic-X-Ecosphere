@@ -1,0 +1,9 @@
+[project]
+name = "knotic-api"
+version = "0.0.0"
+description = "Flask API and LangGraph orchestration service for Knotic Sales Agent"
+dependencies = []
+
+[project.scripts]
+knotic-api = "knotic_api.__main__:main"
+

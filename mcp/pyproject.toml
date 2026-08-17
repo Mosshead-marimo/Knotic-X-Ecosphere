@@ -1,0 +1,9 @@
+[project]
+name = "knotic-mcp"
+version = "0.0.0"
+description = "MCP gateway and tools for Knotic Sales Agent"
+dependencies = []
+
+[project.scripts]
+knotic-mcp = "knotic_mcp.__main__:main"
+

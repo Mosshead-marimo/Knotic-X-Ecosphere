@@ -1,0 +1,8 @@
+{
+  "name": "knotic-sales-agent",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ]
+}
+

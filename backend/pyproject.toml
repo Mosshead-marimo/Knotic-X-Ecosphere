@@ -20,7 +20,7 @@ dependencies = [
 knotic-api = "knotic_api.__main__:main"
 
 [build-system]
-requires = ["uv_build==0.12.2"]
+requires = ["uv_build==0.12.5"]
 build-backend = "uv_build"
 
 [tool.uv.sources]

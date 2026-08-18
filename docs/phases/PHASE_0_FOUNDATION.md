@@ -39,7 +39,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Every consequential decision records context, choice, consequences, status, and owner.
 - Verify: Cross-check against mandatory stack and `System_Design.md`.
 
-### [ ] P0-T005 — Define API contracts
+### [x] P0-T005 — Define API contracts
 
 - Dependencies: P0-T004.
 - Implement: `docs/API_CONTRACTS.md` with versioned endpoints/events, authentication, request/response schemas, error envelope, idempotency, pagination, rate limits, and compatibility policy.

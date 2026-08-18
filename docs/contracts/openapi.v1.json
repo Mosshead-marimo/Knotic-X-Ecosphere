@@ -1,0 +1,1148 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Knotic Sales Agent API",
+    "version": "1.0.0",
+    "description": "Version 1 browser and private realtime voice-worker contracts."
+  },
+  "servers": [
+    {"url": "https://api.example.invalid", "description": "Environment-specific HTTPS origin"}
+  ],
+  "security": [{"cookieAuth": []}],
+  "tags": [
+    {"name": "Health"},
+    {"name": "Authentication"},
+    {"name": "Sessions"},
+    {"name": "Operations"},
+    {"name": "InternalVoice"}
+  ],
+  "paths": {
+    "/api/v1/health/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "tags": ["Health"],
+        "summary": "Report process liveness without dependency or configuration details",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Liveness"}}}
+          },
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "get": {
+        "operationId": "startLogin",
+        "tags": ["Authentication"],
+        "summary": "Start OIDC Authorization Code with PKCE using server-held state",
+        "security": [],
+        "parameters": [{"$ref": "#/components/parameters/ReturnTo"}],
+        "responses": {
+          "302": {
+            "description": "Redirect to the configured OIDC issuer",
+            "headers": {
+              "Location": {"$ref": "#/components/headers/ExternalLocation"},
+              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"}
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    },
+    "/api/v1/auth/callback": {
+      "get": {
+        "operationId": "completeLogin",
+        "tags": ["Authentication"],
+        "summary": "Validate the single-use OIDC callback and establish the application session",
+        "security": [],
+        "parameters": [
+          {"$ref": "#/components/parameters/AuthorizationCode"},
+          {"$ref": "#/components/parameters/OidcState"}
+        ],
+        "responses": {
+          "303": {
+            "description": "Application session established and user agent redirected to the validated relative path",
+            "headers": {
+              "Location": {"$ref": "#/components/headers/ApplicationLocation"},
+              "Set-Cookie": {"$ref": "#/components/headers/SessionCookie"},
+              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"}
+            }
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"},
+          "504": {"$ref": "#/components/responses/DependencyTimeout"}
+        }
+      }
+    },
+    "/api/v1/auth/session": {
+      "get": {
+        "operationId": "getAuthenticatedSession",
+        "tags": ["Authentication"],
+        "summary": "Read the safe authenticated actor and session expiry",
+        "responses": {
+          "200": {
+            "description": "Current authenticated application session",
+            "headers": {
+              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuthenticatedSession"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "tags": ["Authentication"],
+        "summary": "Revoke the server-managed application session and expire its cookie",
+        "parameters": [
+          {"$ref": "#/components/parameters/CsrfToken"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LogoutRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Local session revoked; repeating the same idempotent command returns this result",
+            "headers": {
+              "Set-Cookie": {"$ref": "#/components/headers/ExpiredSessionCookie"},
+              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LogoutResult"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/v1/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "tags": ["Sessions"],
+        "summary": "Create an authorized sales session",
+        "parameters": [
+          {"$ref": "#/components/parameters/CsrfToken"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionCreateRequest"}}}
+        },
+        "responses": {
+          "201": {
+            "description": "Session created",
+            "headers": {
+              "Location": {"$ref": "#/components/headers/Location"},
+              "ETag": {"$ref": "#/components/headers/ETag"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionResource"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "get": {
+        "operationId": "getSession",
+        "tags": ["Sessions"],
+        "summary": "Read the latest authorized session projection",
+        "responses": {
+          "200": {
+            "description": "Current session",
+            "headers": {
+              "ETag": {"$ref": "#/components/headers/ETag"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionResource"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/agora-credentials": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "post": {
+        "operationId": "createAgoraCredentials",
+        "tags": ["Sessions"],
+        "summary": "Mint short-lived RTC credentials bound to the authorized session",
+        "parameters": [
+          {"$ref": "#/components/parameters/CsrfToken"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AgoraCredentialsRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Short-lived Agora credentials",
+            "headers": {
+              "Cache-Control": {"schema": {"type": "string", "const": "no-store"}},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AgoraCredentials"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"},
+          "504": {"$ref": "#/components/responses/DependencyTimeout"}
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/turns": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "post": {
+        "operationId": "submitTextTurn",
+        "tags": ["Sessions"],
+        "summary": "Submit one final text turn",
+        "parameters": [
+          {"$ref": "#/components/parameters/CsrfToken"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TextTurnRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Turn completed within the synchronous deadline",
+            "headers": {
+              "ETag": {"$ref": "#/components/headers/ETag"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TurnResult"}}}
+          },
+          "202": {
+            "description": "Turn durably accepted and still processing",
+            "headers": {
+              "Location": {"$ref": "#/components/headers/Location"},
+              "Retry-After": {"$ref": "#/components/headers/RetryAfter"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"},
+          "504": {"$ref": "#/components/responses/DependencyTimeout"}
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/end": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "post": {
+        "operationId": "endSession",
+        "tags": ["Sessions"],
+        "summary": "Request graceful idempotent session completion",
+        "parameters": [
+          {"$ref": "#/components/parameters/CsrfToken"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EndSessionRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Session reached its requested state synchronously",
+            "headers": {
+              "ETag": {"$ref": "#/components/headers/ETag"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SessionResource"}}}
+          },
+          "202": {
+            "description": "End request durably accepted and still processing",
+            "headers": {
+              "Location": {"$ref": "#/components/headers/Location"},
+              "Retry-After": {"$ref": "#/components/headers/RetryAfter"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"},
+          "504": {"$ref": "#/components/responses/DependencyTimeout"}
+        }
+      }
+    },
+    "/api/v1/sessions/{session_id}/events": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "get": {
+        "operationId": "listSessionEvents",
+        "tags": ["Sessions"],
+        "summary": "List an ordered event projection using opaque cursor pagination",
+        "parameters": [
+          {"$ref": "#/components/parameters/Cursor"},
+          {"$ref": "#/components/parameters/Limit"}
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered event page",
+            "headers": {
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EventPage"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    },
+    "/api/v1/operations/{operation_id}": {
+      "parameters": [{"$ref": "#/components/parameters/OperationId"}],
+      "get": {
+        "operationId": "getOperation",
+        "tags": ["Operations"],
+        "summary": "Read an authorized asynchronous operation",
+        "responses": {
+          "200": {
+            "description": "Current operation state",
+            "headers": {
+              "Retry-After": {"$ref": "#/components/headers/RetryAfter"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    },
+    "/internal/v1/voice/turns": {
+      "post": {
+        "operationId": "submitVoiceTurn",
+        "tags": ["InternalVoice"],
+        "summary": "Submit one final ordered semantic voice turn",
+        "security": [{"workloadAuth": []}],
+        "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VoiceTurnRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Voice turn completed within the synchronous deadline",
+            "headers": {
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TurnResult"}}}
+          },
+          "202": {
+            "description": "Voice turn durably accepted and still processing",
+            "headers": {
+              "Location": {"$ref": "#/components/headers/Location"},
+              "Retry-After": {"$ref": "#/components/headers/RetryAfter"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Operation"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"},
+          "504": {"$ref": "#/components/responses/DependencyTimeout"}
+        }
+      }
+    },
+    "/internal/v1/voice/interruptions": {
+      "post": {
+        "operationId": "recordVoiceInterruption",
+        "tags": ["InternalVoice"],
+        "summary": "Durably record deterministic AI playback interruption",
+        "security": [{"workloadAuth": []}],
+        "parameters": [{"$ref": "#/components/parameters/IdempotencyKey"}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InterruptionRequest"}}}
+        },
+        "responses": {
+          "202": {
+            "description": "Interruption event accepted",
+            "headers": {
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"},
+              "X-Correlation-ID": {"$ref": "#/components/headers/CorrelationId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EventAcknowledgement"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "knotic_session",
+        "description": "HttpOnly, Secure, SameSite=Lax server-managed browser session."
+      },
+      "workloadAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "short-lived workload token",
+        "description": "Private voice-worker workload identity; mTLS may replace bearer transport at deployment."
+      }
+    },
+    "parameters": {
+      "ReturnTo": {
+        "name": "return_to",
+        "in": "query",
+        "required": false,
+        "schema": {"type": "string", "pattern": "^/(?!/)[^\\r\\n]*$", "maxLength": 1024, "default": "/"},
+        "description": "Allowlisted application-relative destination; absolute and protocol-relative values are rejected."
+      },
+      "AuthorizationCode": {
+        "name": "code",
+        "in": "query",
+        "required": true,
+        "schema": {"type": "string", "minLength": 8, "maxLength": 4096},
+        "description": "Sensitive, single-use OIDC authorization code; never logged."
+      },
+      "OidcState": {
+        "name": "state",
+        "in": "query",
+        "required": true,
+        "schema": {"type": "string", "minLength": 32, "maxLength": 1024},
+        "description": "Opaque, single-use server-bound OIDC state; never logged."
+      },
+      "SessionId": {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/Uuid"}
+      },
+      "OperationId": {
+        "name": "operation_id",
+        "in": "path",
+        "required": true,
+        "schema": {"$ref": "#/components/schemas/Uuid"}
+      },
+      "CsrfToken": {
+        "name": "X-CSRF-Token",
+        "in": "header",
+        "required": true,
+        "schema": {"type": "string", "minLength": 32, "maxLength": 512},
+        "description": "Token bound to the authenticated server-managed browser session."
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {"type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[!-~]+$"}
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": {"type": "string", "minLength": 16, "maxLength": 2048},
+        "description": "Opaque, scoped cursor returned by the preceding page."
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}
+      }
+    },
+    "headers": {
+      "RequestId": {"description": "Safe request identifier", "schema": {"$ref": "#/components/schemas/Uuid"}},
+      "CorrelationId": {"description": "Cross-service correlation identifier", "schema": {"$ref": "#/components/schemas/Uuid"}},
+      "Location": {"description": "Canonical resource or operation path", "schema": {"type": "string", "pattern": "^/(api|internal)/v1/"}},
+      "ExternalLocation": {"description": "Configured HTTPS OIDC authorization endpoint", "schema": {"type": "string", "format": "uri", "pattern": "^https://"}},
+      "ApplicationLocation": {"description": "Validated application-relative redirect destination", "schema": {"type": "string", "pattern": "^/(?!/)"}},
+      "SessionCookie": {"description": "Server-generated knotic_session cookie with HttpOnly, Secure, SameSite=Lax, and Path=/api; the value must never be logged.", "schema": {"type": "string"}},
+      "ExpiredSessionCookie": {"description": "Expired knotic_session cookie with Max-Age=0 and the same security attributes.", "schema": {"type": "string"}},
+      "ETag": {"description": "Quoted session version", "schema": {"type": "string", "pattern": "^\"[1-9][0-9]*\"$"}},
+      "RetryAfter": {"description": "Whole seconds before retry or operation poll", "schema": {"type": "integer", "minimum": 1}},
+      "RateLimitLimit": {"description": "Quota for the current window", "schema": {"type": "integer", "minimum": 1}},
+      "RateLimitRemaining": {"description": "Remaining requests in the current window", "schema": {"type": "integer", "minimum": 0}},
+      "RateLimitReset": {"description": "UTC epoch seconds when the quota resets", "schema": {"type": "integer", "minimum": 1}}
+    },
+    "responses": {
+      "BadRequest": {"$ref": "#/components/responses/ErrorResponse400"},
+      "Unauthorized": {"$ref": "#/components/responses/ErrorResponse401"},
+      "Forbidden": {"$ref": "#/components/responses/ErrorResponse403"},
+      "NotFound": {"$ref": "#/components/responses/ErrorResponse404"},
+      "Conflict": {"$ref": "#/components/responses/ErrorResponse409"},
+      "UnsupportedMediaType": {"$ref": "#/components/responses/ErrorResponse415"},
+      "UnprocessableEntity": {"$ref": "#/components/responses/ErrorResponse422"},
+      "RateLimited": {
+        "description": "Caller quota exhausted",
+        "headers": {
+          "Retry-After": {"$ref": "#/components/headers/RetryAfter"},
+          "RateLimit-Limit": {"$ref": "#/components/headers/RateLimitLimit"},
+          "RateLimit-Remaining": {"$ref": "#/components/headers/RateLimitRemaining"},
+          "RateLimit-Reset": {"$ref": "#/components/headers/RateLimitReset"},
+          "X-Request-ID": {"$ref": "#/components/headers/RequestId"}
+        },
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}
+      },
+      "InternalError": {"$ref": "#/components/responses/ErrorResponse500"},
+      "DependencyUnavailable": {
+        "description": "Required dependency unavailable",
+        "headers": {
+          "Retry-After": {"$ref": "#/components/headers/RetryAfter"},
+          "X-Request-ID": {"$ref": "#/components/headers/RequestId"}
+        },
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}
+      },
+      "DependencyTimeout": {
+        "description": "Required dependency exceeded the bounded deadline",
+        "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}},
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}
+      },
+      "ErrorResponse400": {"description": "Malformed request or cursor", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "ErrorResponse401": {"description": "Authentication required or invalid", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "ErrorResponse403": {"description": "Authorization, origin, CSRF, or policy denied", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "ErrorResponse404": {"description": "Resource not found or deliberately concealed", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "ErrorResponse409": {"description": "Version, sequence, idempotency, or lifecycle conflict", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "ErrorResponse415": {"description": "Request media type unsupported", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "ErrorResponse422": {"description": "Request schema validation failed", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}},
+      "ErrorResponse500": {"description": "Safe internal error", "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorEnvelope"}}}}
+    },
+    "schemas": {
+      "Uuid": {"type": "string", "format": "uuid"},
+      "Timestamp": {"type": "string", "format": "date-time"},
+      "Liveness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": {"status": {"type": "string", "const": "ok"}}
+      },
+      "AuthenticatedSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["authenticated", "actor", "expires_at"],
+        "properties": {
+          "authenticated": {"type": "boolean", "const": true},
+          "actor": {"$ref": "#/components/schemas/AuthenticatedActor"},
+          "expires_at": {"$ref": "#/components/schemas/Timestamp"}
+        }
+      },
+      "AuthenticatedActor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["actor_id", "tenant_id", "display_name", "roles"],
+        "properties": {
+          "actor_id": {"$ref": "#/components/schemas/Uuid"},
+          "tenant_id": {"$ref": "#/components/schemas/Uuid"},
+          "display_name": {"type": "string", "minLength": 1, "maxLength": 200},
+          "roles": {"type": "array", "items": {"type": "string", "enum": ["CUSTOMER", "SALES_REP", "SUPERVISOR", "ADMIN"]}, "minItems": 1, "uniqueItems": true}
+        }
+      },
+      "LogoutRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["all_sessions"],
+        "properties": {"all_sessions": {"type": "boolean", "description": "When true, revoke all application sessions for the authenticated actor when policy permits."}}
+      },
+      "LogoutResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["authenticated", "revoked_sessions"],
+        "properties": {
+          "authenticated": {"type": "boolean", "const": false},
+          "revoked_sessions": {"type": "integer", "minimum": 1}
+        }
+      },
+      "SessionCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["locale", "timezone"],
+        "properties": {
+          "locale": {"type": "string", "minLength": 2, "maxLength": 35},
+          "timezone": {"type": "string", "minLength": 1, "maxLength": 100}
+        }
+      },
+      "SessionResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_id", "version", "status", "created_at", "updated_at", "ended_at", "state"],
+        "properties": {
+          "session_id": {"$ref": "#/components/schemas/Uuid"},
+          "version": {"type": "integer", "minimum": 1},
+          "status": {"type": "string", "enum": ["CREATED", "ACTIVE", "ENDING", "ENDED", "FAILED"]},
+          "created_at": {"$ref": "#/components/schemas/Timestamp"},
+          "updated_at": {"$ref": "#/components/schemas/Timestamp"},
+          "ended_at": {"oneOf": [{"$ref": "#/components/schemas/Timestamp"}, {"type": "null"}]},
+          "state": {"$ref": "#/components/schemas/SalesStateView"}
+        }
+      },
+      "SalesStateView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["current_intent", "buying_stage", "qualification_score", "next_best_action", "conversation_summary", "latest_request", "outcome"],
+        "properties": {
+          "current_topic": {"type": ["string", "null"], "maxLength": 200},
+          "current_intent": {"oneOf": [{"$ref": "#/components/schemas/Intent"}, {"type": "null"}]},
+          "buying_stage": {"$ref": "#/components/schemas/BuyingStage"},
+          "qualification_score": {"type": "integer", "minimum": 0, "maximum": 100},
+          "next_best_action": {"$ref": "#/components/schemas/NextBestAction"},
+          "conversation_summary": {"type": "string", "maxLength": 4000},
+          "latest_request": {"type": ["string", "null"], "maxLength": 1000},
+          "customer": {"$ref": "#/components/schemas/CustomerView"},
+          "requirements": {"$ref": "#/components/schemas/RequirementsView"},
+          "objections": {"type": "array", "items": {"$ref": "#/components/schemas/ObjectionCategory"}, "uniqueItems": true},
+          "competitors": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}, "uniqueItems": true},
+          "outcome": {"oneOf": [{"$ref": "#/components/schemas/Outcome"}, {"type": "null"}]}
+        }
+      },
+      "CustomerView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "company": {"type": ["string", "null"], "maxLength": 300},
+          "role": {"type": ["string", "null"], "maxLength": 200}
+        }
+      },
+      "RequirementsView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "users": {"type": ["integer", "null"], "minimum": 1},
+          "use_cases": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+          "integrations": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+          "budget": {"type": ["string", "null"], "maxLength": 200},
+          "timeline": {"type": ["string", "null"], "maxLength": 200}
+        }
+      },
+      "Intent": {"type": "string", "enum": ["DISCOVERY", "PRICING", "PRODUCT_QUESTION", "COMPETITOR_COMPARISON", "OBJECTION", "CHANGE_REQUIREMENT", "DEMO_REQUEST", "BOOKING", "FOLLOWUP", "HUMAN_HANDOFF", "GENERAL_QUESTION", "CLOSING"]},
+      "ObjectionCategory": {"type": "string", "enum": ["PRICE", "COMPETITOR", "SECURITY", "TRUST", "FEATURE_GAP", "IMPLEMENTATION", "TIMELINE", "BUDGET", "AUTHORITY"]},
+      "BuyingStage": {"type": "string", "enum": ["NURTURE", "FOLLOWUP", "SALES_QUALIFIED", "HIGH_INTENT"]},
+      "NextBestAction": {"type": "string", "enum": ["ASK_DISCOVERY", "ANSWER_QUESTION", "RETRIEVE_PRODUCT_INFO", "GET_PRICING", "HANDLE_OBJECTION", "COMPARE_COMPETITOR", "UPDATE_REQUIREMENT", "OFFER_DEMO", "BOOK_DEMO", "CREATE_FOLLOWUP", "ESCALATE_HUMAN", "END_CALL"]},
+      "Outcome": {"type": "string", "enum": ["ENTERPRISE_DEMO_BOOKED", "LEAD_QUALIFIED", "FOLLOWUP_CREATED", "HUMAN_ESCALATED", "NURTURE", "CLOSED_NO_ACTION"]},
+      "AgoraCredentialsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role"],
+        "properties": {"role": {"type": "string", "const": "PUBLISHER"}}
+      },
+      "AgoraCredentials": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rtc_token", "channel", "uid", "role", "expires_at"],
+        "properties": {
+          "rtc_token": {"type": "string", "minLength": 32, "readOnly": true},
+          "channel": {"type": "string", "minLength": 1, "maxLength": 64},
+          "uid": {"type": "string", "minLength": 1, "maxLength": 64},
+          "role": {"type": "string", "const": "PUBLISHER"},
+          "expires_at": {"$ref": "#/components/schemas/Timestamp"}
+        }
+      },
+      "TextTurnRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "locale"],
+        "properties": {
+          "text": {"type": "string", "minLength": 1, "maxLength": 8000, "pattern": ".*\\S.*"},
+          "locale": {"type": "string", "minLength": 2, "maxLength": 35},
+          "client_occurred_at": {"oneOf": [{"$ref": "#/components/schemas/Timestamp"}, {"type": "null"}]},
+          "expected_session_version": {"type": ["integer", "null"], "minimum": 1}
+        }
+      },
+      "VoiceTurnRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_id", "turn_id", "sequence", "transcript", "locale", "speech_started_at", "speech_ended_at", "provider_event_id"],
+        "properties": {
+          "session_id": {"$ref": "#/components/schemas/Uuid"},
+          "turn_id": {"$ref": "#/components/schemas/Uuid"},
+          "sequence": {"type": "integer", "minimum": 1},
+          "transcript": {"type": "string", "minLength": 1, "maxLength": 8000, "pattern": ".*\\S.*"},
+          "locale": {"type": "string", "minLength": 2, "maxLength": 35},
+          "speech_started_at": {"$ref": "#/components/schemas/Timestamp"},
+          "speech_ended_at": {"$ref": "#/components/schemas/Timestamp"},
+          "provider_event_id": {"type": "string", "minLength": 1, "maxLength": 256},
+          "expected_session_version": {"type": ["integer", "null"], "minimum": 1}
+        }
+      },
+      "TurnResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["turn_id", "status", "response_disposition", "response_id", "response_text", "session_version", "state", "citations"],
+        "oneOf": [
+          {"properties": {"response_disposition": {"const": "SPOKEN"}, "response_id": {"$ref": "#/components/schemas/Uuid"}, "response_text": {"type": "string", "minLength": 1, "maxLength": 12000}}},
+          {"properties": {"response_disposition": {"enum": ["SILENT_HANDOFF", "SILENT_END"]}, "response_id": {"type": "null"}, "response_text": {"type": "null"}}}
+        ],
+        "properties": {
+          "turn_id": {"$ref": "#/components/schemas/Uuid"},
+          "status": {"type": "string", "const": "COMPLETED"},
+          "response_disposition": {"type": "string", "enum": ["SPOKEN", "SILENT_HANDOFF", "SILENT_END"]},
+          "response_id": {"oneOf": [{"$ref": "#/components/schemas/Uuid"}, {"type": "null"}]},
+          "response_text": {"type": ["string", "null"], "maxLength": 12000},
+          "session_version": {"type": "integer", "minimum": 1},
+          "state": {"$ref": "#/components/schemas/SalesStateView"},
+          "citations": {"type": "array", "items": {"$ref": "#/components/schemas/Citation"}}
+        }
+      },
+      "Citation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "title", "uri", "retrieved_at"],
+        "properties": {
+          "source_id": {"type": "string", "minLength": 1, "maxLength": 256},
+          "title": {"type": "string", "minLength": 1, "maxLength": 500},
+          "uri": {"type": "string", "format": "uri"},
+          "retrieved_at": {"$ref": "#/components/schemas/Timestamp"}
+        }
+      },
+      "EndSessionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "expected_session_version"],
+        "properties": {
+          "reason": {"type": "string", "enum": ["USER_REQUEST", "COMPLETED", "DISCONNECTED"]},
+          "expected_session_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "Operation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation_id", "kind", "status", "session_id", "created_at", "updated_at", "result", "error"],
+        "oneOf": [
+          {"properties": {"status": {"enum": ["PENDING", "RUNNING"]}, "result": {"type": "null"}, "error": {"type": "null"}}},
+          {"properties": {"status": {"const": "SUCCEEDED"}, "result": {"oneOf": [{"$ref": "#/components/schemas/TurnResult"}, {"$ref": "#/components/schemas/SessionResource"}]}, "error": {"type": "null"}}},
+          {"properties": {"status": {"const": "FAILED"}, "result": {"type": "null"}, "error": {"$ref": "#/components/schemas/ErrorObject"}}}
+        ],
+        "properties": {
+          "operation_id": {"$ref": "#/components/schemas/Uuid"},
+          "kind": {"type": "string", "enum": ["PROCESS_TURN", "END_SESSION"]},
+          "status": {"type": "string", "enum": ["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]},
+          "session_id": {"$ref": "#/components/schemas/Uuid"},
+          "created_at": {"$ref": "#/components/schemas/Timestamp"},
+          "updated_at": {"$ref": "#/components/schemas/Timestamp"},
+          "result": {"oneOf": [{"$ref": "#/components/schemas/TurnResult"}, {"$ref": "#/components/schemas/SessionResource"}, {"type": "null"}]},
+          "error": {"oneOf": [{"$ref": "#/components/schemas/ErrorObject"}, {"type": "null"}]}
+        }
+      },
+      "InterruptionRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_id", "response_id", "sequence", "detected_at", "played_ms", "truncated_at_ms", "reason"],
+        "properties": {
+          "session_id": {"$ref": "#/components/schemas/Uuid"},
+          "response_id": {"$ref": "#/components/schemas/Uuid"},
+          "sequence": {"type": "integer", "minimum": 1},
+          "detected_at": {"$ref": "#/components/schemas/Timestamp"},
+          "played_ms": {"type": "integer", "minimum": 0},
+          "truncated_at_ms": {"type": "integer", "minimum": 0},
+          "reason": {"type": "string", "enum": ["CUSTOMER_SPEECH", "DISCONNECT", "POLICY_CANCEL", "SESSION_ENDED"]}
+        }
+      },
+      "EventAcknowledgement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["accepted", "event_id"],
+        "properties": {
+          "accepted": {"type": "boolean", "const": true},
+          "event_id": {"$ref": "#/components/schemas/Uuid"}
+        }
+      },
+      "DomainEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event_id", "event_type", "event_version", "occurred_at", "tenant_id", "session_id", "sequence", "correlation_id", "causation_id", "actor", "payload"],
+        "properties": {
+          "event_id": {"$ref": "#/components/schemas/Uuid"},
+          "event_type": {"type": "string", "enum": ["session.created", "turn.accepted", "turn.completed", "response.interrupted", "requirement.updated", "qualification.updated", "operation.updated", "session.ended"]},
+          "event_version": {"type": "integer", "const": 1},
+          "occurred_at": {"$ref": "#/components/schemas/Timestamp"},
+          "tenant_id": {"$ref": "#/components/schemas/Uuid"},
+          "session_id": {"$ref": "#/components/schemas/Uuid"},
+          "sequence": {"type": "integer", "minimum": 1},
+          "correlation_id": {"$ref": "#/components/schemas/Uuid"},
+          "causation_id": {"oneOf": [{"$ref": "#/components/schemas/Uuid"}, {"type": "null"}]},
+          "actor": {"$ref": "#/components/schemas/EventActor"},
+          "payload": {"oneOf": [{"$ref": "#/components/schemas/SessionCreatedPayload"}, {"$ref": "#/components/schemas/TurnAcceptedPayload"}, {"$ref": "#/components/schemas/TurnCompletedPayload"}, {"$ref": "#/components/schemas/RequirementUpdatedPayload"}, {"$ref": "#/components/schemas/ResponseInterruptedPayload"}, {"$ref": "#/components/schemas/QualificationUpdatedPayload"}, {"$ref": "#/components/schemas/OperationUpdatedPayload"}, {"$ref": "#/components/schemas/SessionEndedPayload"}]}
+        }
+      },
+      "EventActor": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "id"],
+        "properties": {
+          "type": {"type": "string", "enum": ["CUSTOMER", "USER", "SERVICE", "SYSTEM"]},
+          "id": {"$ref": "#/components/schemas/Uuid"}
+        }
+      },
+      "SessionCreatedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_version", "status"],
+        "properties": {
+          "session_version": {"type": "integer", "minimum": 1},
+          "status": {"type": "string", "const": "CREATED"}
+        }
+      },
+      "TurnAcceptedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["turn_id", "source", "sequence"],
+        "properties": {
+          "turn_id": {"$ref": "#/components/schemas/Uuid"},
+          "source": {"type": "string", "enum": ["TEXT", "VOICE"]},
+          "sequence": {"type": "integer", "minimum": 1}
+        }
+      },
+      "TurnCompletedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["turn_id", "response_id", "session_version"],
+        "properties": {
+          "turn_id": {"$ref": "#/components/schemas/Uuid"},
+          "response_id": {"oneOf": [{"$ref": "#/components/schemas/Uuid"}, {"type": "null"}]},
+          "session_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "RequirementUpdatedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "old_value", "new_value", "confirmed"],
+        "oneOf": [
+          {"properties": {"field": {"const": "users"}, "old_value": {"type": ["integer", "null"], "minimum": 1}, "new_value": {"type": "integer", "minimum": 1}}},
+          {"properties": {"field": {"enum": ["use_cases", "integrations"]}, "old_value": {"oneOf": [{"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 500}}, {"type": "null"}]}, "new_value": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 500}}}},
+          {"properties": {"field": {"enum": ["budget", "timeline"]}, "old_value": {"type": ["string", "null"], "maxLength": 200}, "new_value": {"type": "string", "minLength": 1, "maxLength": 200}}}
+        ],
+        "properties": {
+          "field": {"type": "string", "enum": ["users", "use_cases", "integrations", "budget", "timeline"]},
+          "old_value": {},
+          "new_value": {},
+          "confirmed": {"type": "boolean", "const": true}
+        }
+      },
+      "ResponseInterruptedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["response_id", "played_ms", "truncated_at_ms", "detected_at", "reason"],
+        "properties": {
+          "response_id": {"$ref": "#/components/schemas/Uuid"},
+          "played_ms": {"type": "integer", "minimum": 0},
+          "truncated_at_ms": {"type": "integer", "minimum": 0},
+          "detected_at": {"$ref": "#/components/schemas/Timestamp"},
+          "reason": {"type": "string", "enum": ["CUSTOMER_SPEECH", "DISCONNECT", "POLICY_CANCEL", "SESSION_ENDED"]}
+        }
+      },
+      "QualificationUpdatedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["old_score", "new_score", "buying_stage"],
+        "properties": {
+          "old_score": {"type": "integer", "minimum": 0, "maximum": 100},
+          "new_score": {"type": "integer", "minimum": 0, "maximum": 100},
+          "buying_stage": {"$ref": "#/components/schemas/BuyingStage"}
+        }
+      },
+      "OperationUpdatedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation_id", "kind", "status"],
+        "properties": {
+          "operation_id": {"$ref": "#/components/schemas/Uuid"},
+          "kind": {"type": "string", "enum": ["PROCESS_TURN", "END_SESSION"]},
+          "status": {"type": "string", "enum": ["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]}
+        }
+      },
+      "SessionEndedPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["outcome", "reason", "session_version"],
+        "properties": {
+          "outcome": {"$ref": "#/components/schemas/Outcome"},
+          "reason": {"type": "string", "enum": ["USER_REQUEST", "COMPLETED", "DISCONNECTED", "RECOVERY_EXHAUSTED"]},
+          "session_version": {"type": "integer", "minimum": 1}
+        }
+      },
+      "EventPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items", "next_cursor", "has_more"],
+        "oneOf": [
+          {"properties": {"has_more": {"const": true}, "next_cursor": {"type": "string", "minLength": 16, "maxLength": 2048}}},
+          {"properties": {"has_more": {"const": false}, "next_cursor": {"type": "null"}}}
+        ],
+        "properties": {
+          "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/components/schemas/DomainEvent"}},
+          "next_cursor": {"type": ["string", "null"], "minLength": 16, "maxLength": 2048},
+          "has_more": {"type": "boolean"}
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {"error": {"$ref": "#/components/schemas/ErrorObject"}}
+      },
+      "ErrorObject": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "category", "message", "retryable", "request_id", "correlation_id", "details"],
+        "properties": {
+          "code": {"$ref": "#/components/schemas/ErrorCode"},
+          "category": {"type": "string", "enum": ["VALIDATION", "AUTHENTICATION", "AUTHORIZATION", "POLICY", "NOT_FOUND", "CONFLICT", "RATE_LIMIT", "DEPENDENCY", "INTERNAL"]},
+          "message": {"type": "string", "minLength": 1, "maxLength": 500},
+          "retryable": {"type": "boolean"},
+          "request_id": {"$ref": "#/components/schemas/Uuid"},
+          "correlation_id": {"oneOf": [{"$ref": "#/components/schemas/Uuid"}, {"type": "null"}]},
+          "details": {"type": "array", "maxItems": 50, "items": {"$ref": "#/components/schemas/ErrorDetail"}}
+        }
+      },
+      "ErrorCode": {"type": "string", "enum": ["MALFORMED_JSON", "INVALID_CURSOR", "INVALID_HEADER", "AUTHENTICATION_REQUIRED", "AUTHENTICATION_INVALID", "FORBIDDEN", "CSRF_FAILED", "ORIGIN_DENIED", "POLICY_DENIED", "RESOURCE_NOT_FOUND", "VERSION_CONFLICT", "SEQUENCE_CONFLICT", "IDEMPOTENCY_CONFLICT", "SESSION_NOT_ACCEPTING_TURNS", "UNSUPPORTED_MEDIA_TYPE", "VALIDATION_FAILED", "RATE_LIMITED", "INTERNAL_ERROR", "DEPENDENCY_UNAVAILABLE", "DEPENDENCY_TIMEOUT"]},
+      "ErrorDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "issue"],
+        "properties": {
+          "field": {"type": ["string", "null"], "maxLength": 200},
+          "issue": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    }
+  },
+  "x-event-payload-map": {
+    "session.created": "#/components/schemas/SessionCreatedPayload",
+    "turn.accepted": "#/components/schemas/TurnAcceptedPayload",
+    "turn.completed": "#/components/schemas/TurnCompletedPayload",
+    "response.interrupted": "#/components/schemas/ResponseInterruptedPayload",
+    "requirement.updated": "#/components/schemas/RequirementUpdatedPayload",
+    "qualification.updated": "#/components/schemas/QualificationUpdatedPayload",
+    "operation.updated": "#/components/schemas/OperationUpdatedPayload",
+    "session.ended": "#/components/schemas/SessionEndedPayload"
+  },
+  "x-contract-examples": [
+    {
+      "name": "authenticated-session",
+      "schema": "#/components/schemas/AuthenticatedSession",
+      "value": {
+        "authenticated": true,
+        "actor": {"actor_id": "7db03395-8778-4a76-9c90-d3cb3d4fccb8", "tenant_id": "60b059c2-9d6f-4d3f-b98d-f72bfb7a5691", "display_name": "Example Customer", "roles": ["CUSTOMER"]},
+        "expires_at": "2026-08-18T16:00:00Z"
+      }
+    },
+    {
+      "name": "logout-request",
+      "schema": "#/components/schemas/LogoutRequest",
+      "value": {"all_sessions": false}
+    },
+    {
+      "name": "logout-result",
+      "schema": "#/components/schemas/LogoutResult",
+      "value": {"authenticated": false, "revoked_sessions": 1}
+    },
+    {
+      "name": "create-session-request",
+      "schema": "#/components/schemas/SessionCreateRequest",
+      "value": {"locale": "en-IN", "timezone": "Asia/Calcutta"}
+    },
+    {
+      "name": "created-session",
+      "schema": "#/components/schemas/SessionResource",
+      "value": {
+        "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "version": 1,
+        "status": "CREATED",
+        "created_at": "2026-08-18T08:00:00Z",
+        "updated_at": "2026-08-18T08:00:00Z",
+        "ended_at": null,
+        "state": {"current_intent": null, "buying_stage": "NURTURE", "qualification_score": 0, "next_best_action": "ASK_DISCOVERY", "conversation_summary": "", "latest_request": null, "outcome": null}
+      }
+    },
+    {
+      "name": "text-turn-request",
+      "schema": "#/components/schemas/TextTurnRequest",
+      "value": {"text": "We need support for 250 users.", "locale": "en-IN"}
+    },
+    {
+      "name": "completed-turn",
+      "schema": "#/components/schemas/TurnResult",
+      "value": {
+        "turn_id": "64a95db5-d568-4f2f-b624-76a3f675a6bc",
+        "status": "COMPLETED",
+        "response_disposition": "SPOKEN",
+        "response_id": "e5d5f6f2-c79d-41a3-a608-050e18d638a5",
+        "response_text": "Thanks — I have updated the requirement to 250 users. Which integrations are essential?",
+        "session_version": 7,
+        "state": {"current_intent": "CHANGE_REQUIREMENT", "buying_stage": "FOLLOWUP", "qualification_score": 45, "next_best_action": "ASK_DISCOVERY", "conversation_summary": "Customer needs support for 250 users.", "latest_request": "Support 250 users", "outcome": null},
+        "citations": []
+      }
+    },
+    {
+      "name": "pending-operation",
+      "schema": "#/components/schemas/Operation",
+      "value": {
+        "operation_id": "2ebc3bc3-8b7b-4f77-8d23-856f548b2e5c",
+        "kind": "PROCESS_TURN",
+        "status": "PENDING",
+        "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "created_at": "2026-08-18T08:00:01Z",
+        "updated_at": "2026-08-18T08:00:01Z",
+        "result": null,
+        "error": null
+      }
+    },
+    {
+      "name": "validation-error",
+      "schema": "#/components/schemas/ErrorEnvelope",
+      "value": {
+        "error": {
+          "code": "VALIDATION_FAILED",
+          "category": "VALIDATION",
+          "message": "The request did not pass validation.",
+          "retryable": false,
+          "request_id": "8cd1571f-b370-4a53-b347-4a8caadcd57b",
+          "correlation_id": "59e57939-c5c3-4faf-b80c-58b7f806a8c8",
+          "details": [{"field": "text", "issue": "must contain at least one non-whitespace character"}]
+        }
+      }
+    },
+    {
+      "name": "voice-turn-request",
+      "schema": "#/components/schemas/VoiceTurnRequest",
+      "value": {
+        "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "turn_id": "64a95db5-d568-4f2f-b624-76a3f675a6bc",
+        "sequence": 7,
+        "transcript": "Actually support is joining too. Make that 250.",
+        "locale": "en-IN",
+        "speech_started_at": "2026-08-18T08:00:00Z",
+        "speech_ended_at": "2026-08-18T08:00:02Z",
+        "provider_event_id": "voice_evt_01"
+      }
+    },
+    {
+      "name": "requirement-updated-event",
+      "schema": "#/components/schemas/DomainEvent",
+      "value": {
+        "event_id": "6fa459ea-ee8a-4ca4-894e-db77e160355e",
+        "event_type": "requirement.updated",
+        "event_version": 1,
+        "occurred_at": "2026-08-18T08:00:02Z",
+        "tenant_id": "60b059c2-9d6f-4d3f-b98d-f72bfb7a5691",
+        "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "sequence": 7,
+        "correlation_id": "59e57939-c5c3-4faf-b80c-58b7f806a8c8",
+        "causation_id": "64a95db5-d568-4f2f-b624-76a3f675a6bc",
+        "actor": {"type": "CUSTOMER", "id": "7db03395-8778-4a76-9c90-d3cb3d4fccb8"},
+        "payload": {"field": "users", "old_value": 50, "new_value": 250, "confirmed": true}
+      }
+    },
+    {
+      "name": "interruption-request",
+      "schema": "#/components/schemas/InterruptionRequest",
+      "value": {
+        "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        "response_id": "e5d5f6f2-c79d-41a3-a608-050e18d638a5",
+        "sequence": 8,
+        "detected_at": "2026-08-18T08:00:04Z",
+        "played_ms": 1240,
+        "truncated_at_ms": 1240,
+        "reason": "CUSTOMER_SPEECH"
+      }
+    },
+    {
+      "name": "agora-credentials",
+      "schema": "#/components/schemas/AgoraCredentials",
+      "value": {"rtc_token": "safe-example-token-with-at-least-32-characters", "channel": "session-f47ac10b", "uid": "customer-7db03395", "role": "PUBLISHER", "expires_at": "2026-08-18T08:05:00Z"}
+    }
+  ]
+}

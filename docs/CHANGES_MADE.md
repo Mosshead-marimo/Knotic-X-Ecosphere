@@ -339,6 +339,42 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Parsed both JSON manifests; uv parsed the Python workspace and stopped only at the intentionally absent `uv.lock`; confirmed all required component and entry-point paths; confirmed there are no nested repositories, secret-like files, dependency directories, build outputs, or retained validation caches; created the initial commit on `main`; cloned it without hard links into an isolated temporary checkout; confirmed the checkout was on `main`, clean, structurally complete, and had valid JSON manifests; removed the verified temporary checkout.
 - Follow-up: Complete `P0-T002` to provision supported runtimes, dependencies, scripts, and committed lockfiles.
 
+### 2026-08-17 — Pinned runtimes and reproducible dependencies
+
+- Phase: 0 (`P0-T002`)
+- Status: Added
+- Files: Runtime pin files, root/component manifests, `package-lock.json`, `uv.lock`, `.npmrc`, `.github/dependabot.yml`, `infra/runtime-versions.env`, `scripts/verify-js-runtime.mjs`, `docs/DEPENDENCY_POLICY.md`, component READMEs, and task status
+- Summary: Pinned Node.js 24.19.0 with npm 11.17.0, Python 3.13.14 with uv 0.12.2, PostgreSQL 17.10, pgvector 0.8.6, Redis 8.8.1, exact frontend/Python direct dependencies, future container bases, and weekly npm/uv dependency updates. Added committed universal lockfiles, strict runtime enforcement, uv malware checking, and dependency audit policy.
+- Verification: Generated both lockfiles with the pinned toolchains; completed two clean npm and uv installs; confirmed the unsupported local Node 22/npm 10 pair fails with actionable version messages; verified the pinned Node/npm pair; passed TypeScript checking and a Next.js 16.3.1 production build; verified Python 3.13.14 and all required application imports; confirmed uv lock consistency; npm audit found zero vulnerabilities; pip-audit found no known third-party vulnerabilities and skipped only the two local non-PyPI workspace packages; removed all generated environments, build output, caches, and temporary tool distributions.
+- Follow-up: Complete `P0-T003` to implement typed environment configuration, startup validation, secret-provider boundaries, and redaction.
+
+### 2026-08-17 — Added production configuration and secret model
+
+- Phase: 0 (`P0-T003`)
+- Status: Added
+- Files: `.env.example`, `packages/config`, backend and MCP configuration/startup modules and tests, `scripts/scan-frontend-secrets.mjs`, `docs/CONFIGURATION.md`, manifests and `uv.lock`, component documentation, and task status
+- Summary: Added shared typed environment models, explicit-only environment-file loading, environment and mapping secret providers, required/optional secret resolution, masked configuration errors, recursive structured log redaction, exact-secret replacement, backend and MCP startup validation, production debug/origin/host restrictions including loopback rejection, rotation overlap fields and guidance, and source/production-bundle credential scanning.
+- Verification: Locked and installed the 105-package Python workspace with malware checking; passed 16 configuration/provider/redaction/fail-fast tests; confirmed explicit environment files load only when supplied; confirmed malformed secret summaries never echo submitted values; passed TypeScript checking and a Next.js 16.3.1 production build; scanner self-test proved detection and the real source/server/static bundle scan passed across 93 files; npm reported zero vulnerabilities during the locked install; pip-audit found no known third-party vulnerabilities and skipped only the three local workspace packages; confirmed the uv lock is current.
+- Follow-up: Complete `P0-T004` and record decisions for the deployment secret manager, identity model, provider-specific rotation mechanisms, and logging/observability backend.
+
+### 2026-08-17 — Defined binding production architecture decisions
+
+- Phase: 0 (`P0-T004`)
+- Status: Documented
+- Files: `docs/ARCHITECTURE_DECISIONS.md`, `docs/phases/PHASE_0_FOUNDATION.md`, `README.md`
+- Summary: Accepted ten owned architecture decisions covering service and deployable-process boundaries, production topology and trust zones, human/browser/workload identity, initial OpenAI model and embedding adapters, the Agora realtime media and deterministic barge-in path, Redis/PostgreSQL/pgvector authority, safe failure and transactional truth, managed secrets and rotation, OpenTelemetry-based observability and durable audit, and compatible contract/provider evolution. Each decision records context, choice, consequences, status, owner, rejected alternatives, and required follow-through.
+- Verification: Cross-checked all decisions against the mandatory stack and ownership rules in `AGENTS.md`, every functional and non-functional requirement in `REQUIREMENTS.md`, all canonical architecture, runtime, data, MCP, RAG, handoff, and failure sections in `System_Design.md`, and the established configuration/rotation boundary. Confirmed every accepted ADR contains the six required fields and traceability covers FR-01 through FR-14 plus every non-functional requirement. Verified current model capability statements against official provider documentation; account availability and production approval remain deployment gates.
+- Follow-up: Complete `P0-T005`; `P0-T008` must select the environment-specific production platform, secret-manager adapter, managed data services, regions, and telemetry backend before production deployment approval.
+
+### 2026-08-18 — Defined versioned HTTP and semantic-event contracts
+
+- Phase: 0 (`P0-T005`)
+- Status: Documented
+- Files: `docs/API_CONTRACTS.md`, `docs/contracts/openapi.v1.json`, `scripts/validate-api-contract.mjs`, root scripts, task status, and repository README
+- Summary: Defined fourteen versioned Flask/browser/voice-worker operations including provider-neutral OIDC session bootstrap, sales-session lifecycle, short-lived Agora credentials, synchronous-or-explicitly-pending turns, operation polling, cursor-paginated events, ordered semantic voice turns, and deterministic interruption acknowledgement. Added cookie/workload authentication, CSRF/origin controls, replay-safe idempotency, optimistic versions and sequence conflicts, exact success/pending/error states, rate-limit headers and defaults, one safe error envelope, eight versioned event types with typed payload mappings, compatibility/deprecation rules, and thirteen executable examples.
+- Verification: Parsed and structurally validated the OpenAPI 3.1/draft-2020-12 document; resolved every local reference; verified fourteen unique versioned operation IDs and their narrative registry entries; enforced cookie or workload authentication with explicit unauthenticated health/OIDC exceptions; enforced CSRF/idempotency on state-changing browser calls and idempotency on internal calls; verified cursor/limit pagination, explicit success and safe error coverage, request IDs on every response, ErrorEnvelope on every 4xx/5xx response, all eight event-to-payload mappings, and absence of server-secret fields in examples. Validated thirteen positive examples against their declared schemas and confirmed five deliberately invalid fixtures are rejected, including missing fields, ambiguous response disposition, invalid terminal operation state, inconsistent pagination, and incorrectly typed requirement updates. `git diff --check` and generated-artifact scans passed.
+- Follow-up: Complete `P0-T006` and align durable/active storage lifecycles with these identifiers, versions, event envelopes, idempotency records, and operation states; add the validator and producer/consumer contract tests to CI in `P0-T009`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

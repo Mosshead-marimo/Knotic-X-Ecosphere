@@ -17,9 +17,17 @@ Redis owns active conversational state, PostgreSQL owns durable records, and pgv
 
 Read `docs/AGENTS.md` before making changes. Executable work orders are indexed in `docs/phases/README.md`; record verified changes in `docs/CHANGES_MADE.md`.
 
-## Current bootstrap state
+## Runtime and dependency baseline
 
-`P0-T001` establishes structure only. Dependencies, runtime pins, lockfiles, executable Flask/Next.js/MCP services, health checks, and Docker topology are intentionally deferred to their numbered Phase 0 tasks. Do not treat this scaffold as a runnable or production-ready release.
+`P0-T002` pins Node.js, npm, Python, uv, application dependencies, database/cache versions, and future container bases. Install from the committed lockfiles:
 
-The next task is `P0-T002`, which provisions supported runtimes and reproducible dependencies with npm and uv.
+```text
+npm ci
+uv sync --locked --all-packages --all-groups
+```
 
+The frontend scaffold builds with the pinned dependencies. Flask and MCP dependencies are installed, but their process entry points deliberately remain non-operational until later Phase 0 tasks establish configuration and service bootstrapping. Health checks and Docker topology are also deferred to their numbered tasks.
+
+See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, and `docs/API_CONTRACTS.md` for versioned browser and internal voice APIs. The next task is `P0-T006`, which defines durable and active data models.
+
+Configuration and secret-handling behavior is documented in `docs/CONFIGURATION.md`. `.env.example` is a placeholder-only local template; services never load it implicitly.

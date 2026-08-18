@@ -18,28 +18,28 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Each component has a clear entry point, owner, and dependency boundary; no generated secrets or build output are committed.
 - Verify: Repository tree review and clean bootstrap on a fresh checkout.
 
-### [ ] P0-T002 — Pin supported runtimes and dependencies
+### [x] P0-T002 — Pin supported runtimes and dependencies
 
 - Dependencies: P0-T001.
 - Implement: Pin Node, Python, package-manager, database, Redis, and container versions; commit lockfiles; configure automated dependency updates and vulnerability reporting.
 - Acceptance: Repeated clean installs resolve identical versions; unsupported runtime versions fail with a useful message.
 - Verify: Clean frontend/backend install, lockfile consistency, dependency audit.
 
-### [ ] P0-T003 — Create production configuration and secret model
+### [x] P0-T003 — Create production configuration and secret model
 
 - Dependencies: P0-T001.
 - Implement: Typed configuration loading, environment separation, `.env.example`, startup validation, secret-provider interface, key rotation guidance, and log redaction.
 - Acceptance: Missing or malformed required configuration fails fast; server credentials never enter frontend bundles or logs.
 - Verify: Configuration unit tests and production bundle secret scan.
 
-### [ ] P0-T004 — Define architecture decisions
+### [x] P0-T004 — Define architecture decisions
 
 - Dependencies: P0-T001.
 - Implement: `docs/ARCHITECTURE_DECISIONS.md` covering service boundaries, deployment topology, identity, model/provider choices, realtime voice path, failure strategy, and rejected alternatives.
 - Acceptance: Every consequential decision records context, choice, consequences, status, and owner.
 - Verify: Cross-check against mandatory stack and `System_Design.md`.
 
-### [ ] P0-T005 — Define API contracts
+### [x] P0-T005 — Define API contracts
 
 - Dependencies: P0-T004.
 - Implement: `docs/API_CONTRACTS.md` with versioned endpoints/events, authentication, request/response schemas, error envelope, idempotency, pagination, rate limits, and compatibility policy.

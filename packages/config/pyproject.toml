@@ -1,0 +1,13 @@
+[project]
+name = "knotic-config"
+version = "0.0.0"
+description = "Shared typed configuration, secret resolution, and log redaction"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "pydantic==2.13.4",
+    "pydantic-settings==2.15.0",
+]
+
+[build-system]
+requires = ["uv_build==0.12.2"]
+build-backend = "uv_build"

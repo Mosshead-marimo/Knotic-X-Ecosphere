@@ -17,7 +17,7 @@ function findings(path, content) {
 }
 
 if (process.argv.includes("--self-test")) {
-  const detected = findings("deliberate-invalid-fixture", 'api_key = "realisticSecretMaterial1234567890"');
+  const detected = findings("deliberate-invalid-fixture", 'api_key = "realisticSecretMaterial1234567890"'); // test-only negative fixture
   if (detected.length !== 1) throw new Error("secret scanner failed its deliberate failing-change test");
   console.log("Secret scanner self-test passed: deliberate credential was rejected.");
   process.exit(0);

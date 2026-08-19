@@ -12,9 +12,10 @@ import redis
 from .config import McpSettings, load_mcp_settings
 
 AsgiSend = Callable[[dict[str, Any]], Awaitable[None]]
+AsgiApp = Callable[[dict[str, Any], Any, AsgiSend], Awaitable[None]]
 
 
-def create_app(settings: McpSettings | None = None):
+def create_app(settings: McpSettings | None = None) -> AsgiApp:
     resolved = settings or load_mcp_settings()
 
     async def app(scope: dict[str, Any], receive: Any, send: AsgiSend) -> None:
@@ -39,7 +40,13 @@ def create_app(settings: McpSettings | None = None):
             status = 404
             payload = {"status": "not_found"}
         body = json.dumps(payload, separators=(",", ":")).encode()
-        await send({"type": "http.response.start", "status": status, "headers": [(b"content-type", b"application/json"), (b"cache-control", b"no-store")]})
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status,
+                "headers": [(b"content-type", b"application/json"), (b"cache-control", b"no-store")],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
     return app

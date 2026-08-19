@@ -6,11 +6,11 @@ from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
-from knotic_config import MappingSecretProvider, SecretResolutionError, configuration_error_summary
 from pydantic import ValidationError
 
 from knotic_api.__main__ import main
 from knotic_api.config import load_backend_settings
+from knotic_config import MappingSecretProvider, SecretResolutionError, configuration_error_summary
 
 VALID_SECRETS = {
     "KNOTIC_DATABASE_URL": "postgresql://knotic:secure-password@db.internal:5432/knotic",

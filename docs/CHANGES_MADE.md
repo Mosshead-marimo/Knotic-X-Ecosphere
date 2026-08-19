@@ -402,6 +402,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Passed Compose configuration, a clean image build, and a live `--wait` startup. All five containers became healthy; backend readiness confirmed PostgreSQL, Redis, and MCP; the frontend proxy reported backend readiness; pgvector 0.8.6 was installed; all application containers ran as UID 10001 with read-only roots; and a Redis restart recovered without fixed sleeps. Docker Scout external analysis was not run because it requires transmitting image-derived metadata; the required isolated CI image scan is completed by `P0-T009` before this task is closed.
 - Follow-up: Complete `P0-T009` quality gates and its isolated container scan, then close `P0-T008`.
 
+### 2026-08-20 — Established local and CI quality gates
+
+- Phase: 0 (`P0-T009`)
+- Status: Added
+- Files: `.github/workflows/quality.yml`, `docs/QUALITY_GATES.md`, root/frontend manifests, Ruff/mypy/pytest/ESLint configuration, health tests, quality/secret scripts, Docker frontend build, and lockfiles
+- Summary: Added one fail-fast local gate matching CI for runtime pins, formatting, linting, strict TypeScript and Python typing, unit and contract tests, credential scans, dependency audits, and deliberate invalid-fixture proof. Added isolated per-image Trivy jobs pinned to an immutable action commit and made frontend lint/type checks mandatory image-build stages. Corrected the unsupported ESLint 10/Next.js combination to the pinned ESLint 9 maintenance release.
+- Verification: Ruff lint/format and strict mypy passed across all Python source; 19 tests passed; all API/data/MCP validators passed; repository and frontend secret scans passed; the deliberate credential fixture was rejected; pip-audit found no known third-party vulnerabilities; npm install/build reported zero vulnerabilities; and frontend ESLint, strict TypeScript, and Next.js production build passed in the exact pinned container toolchain. Server-side CI and image-scan results are verified on the stacked pull request before task closure.
+- Follow-up: Verify required GitHub checks, configure/confirm the protected-branch ruleset, close `P0-T008`/`P0-T009`, and complete `P0-T010`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

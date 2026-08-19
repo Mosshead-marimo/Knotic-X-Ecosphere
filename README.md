@@ -32,6 +32,6 @@ The frontend, Flask API, MCP health shell, PostgreSQL/pgvector, and Redis run to
 docker compose up -d --build --wait --wait-timeout 180
 ```
 
-See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, `docs/API_CONTRACTS.md` for versioned APIs, `docs/DATA_MODEL.md` for data ownership, and `docs/MCP_TOOLS.md` for governed tool contracts. The next task is `P0-T009`, which establishes enforced quality gates.
+See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/QUALITY_GATES.md` for local/CI enforcement, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, `docs/API_CONTRACTS.md` for versioned APIs, `docs/DATA_MODEL.md` for data ownership, and `docs/MCP_TOOLS.md` for governed tool contracts. The next task is `P0-T010`, which completes the operational documentation baseline.
 
 Configuration and secret-handling behavior is documented in `docs/CONFIGURATION.md`. `.env.example` is a placeholder-only local template; services never load it implicitly.

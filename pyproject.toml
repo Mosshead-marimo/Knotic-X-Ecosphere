@@ -6,8 +6,33 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "mypy==2.3.0",
     "pip-audit==2.10.1",
+    "pytest==9.1.1",
+    "ruff==0.16.0",
 ]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --import-mode=importlib"
+testpaths = ["backend/tests", "mcp/tests", "packages/config/tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+src = ["backend/src", "mcp/src", "packages/config/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "S105"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true
+packages = ["knotic_api", "knotic_mcp", "knotic_config"]
+mypy_path = ["backend/src", "mcp/src", "packages/config/src"]
 
 [tool.uv]
 package = false

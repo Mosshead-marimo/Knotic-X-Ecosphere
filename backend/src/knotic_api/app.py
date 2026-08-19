@@ -7,6 +7,7 @@ from urllib.request import urlopen
 import psycopg
 import redis
 from flask import Flask, jsonify
+from flask.typing import ResponseReturnValue
 
 from .config import BackendSettings, load_backend_settings
 
@@ -17,11 +18,11 @@ def create_app(settings: BackendSettings | None = None) -> Flask:
     app.config["KNOTIC_SETTINGS"] = resolved
 
     @app.get("/api/v1/health/live")
-    def live():
+    def live() -> ResponseReturnValue:
         return jsonify(status="ok")
 
     @app.get("/api/v1/health/ready")
-    def ready():
+    def ready() -> ResponseReturnValue:
         checks: dict[str, str] = {}
         try:
             with psycopg.connect(resolved.database_url.get_secret_value(), connect_timeout=2) as connection:

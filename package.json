@@ -25,11 +25,19 @@
     "dev": "npm run dev --workspace @knotic/frontend",
     "start": "npm run start --workspace @knotic/frontend",
     "typecheck": "npm run typecheck --workspace @knotic/frontend",
+    "lint": "npm run lint --workspace @knotic/frontend",
+    "format:check": "uv run ruff format --check backend mcp packages",
+    "lint:python": "uv run ruff check backend mcp packages",
+    "typecheck:python": "uv run mypy",
+    "test:python": "uv run pytest",
     "validate:api-contract": "node scripts/validate-api-contract.mjs",
     "validate:data-model": "node scripts/validate-data-model.mjs",
     "validate:mcp-contract": "node scripts/validate-mcp-contract.mjs",
     "scan:frontend-secrets": "node scripts/scan-frontend-secrets.mjs",
-    "audit:dependencies": "npm audit --audit-level=high"
+    "scan:repository-secrets": "node scripts/scan-repository-secrets.mjs",
+    "audit:dependencies": "npm audit --audit-level=high && uv run pip-audit",
+    "quality": "node scripts/quality-gates.mjs",
+    "quality:self-test": "node scripts/scan-repository-secrets.mjs --self-test"
   },
   "workspaces": [
     "frontend"

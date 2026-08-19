@@ -2,11 +2,12 @@
 
 import sys
 
-from knotic_config import SecretResolutionError, configuration_error_summary
 from pydantic import ValidationError
 
-from .config import load_backend_settings
+from knotic_config import SecretResolutionError, configuration_error_summary
+
 from .app import create_app
+from .config import load_backend_settings
 
 
 def main() -> None:

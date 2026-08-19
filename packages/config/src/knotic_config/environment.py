@@ -44,4 +44,3 @@ class CommonSettings(BaseSettings):
         if self.environment in {RuntimeEnvironment.STAGING, RuntimeEnvironment.PRODUCTION} and self.debug:
             raise ValueError("debug mode must be disabled in staging and production")
         return self
-

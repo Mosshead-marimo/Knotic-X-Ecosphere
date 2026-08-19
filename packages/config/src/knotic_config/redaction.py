@@ -45,7 +45,9 @@ def redact_value(value: Any, exact_secrets: Iterable[str] = (), *, key: str | No
     if isinstance(value, str):
         return redact_text(value, secrets)
     if isinstance(value, Mapping):
-        return {item_key: redact_value(item_value, secrets, key=str(item_key)) for item_key, item_value in value.items()}
+        return {
+            item_key: redact_value(item_value, secrets, key=str(item_key)) for item_key, item_value in value.items()
+        }
     if isinstance(value, tuple):
         return tuple(redact_value(item, secrets) for item in value)
     if isinstance(value, list):
@@ -74,4 +76,3 @@ def install_redaction(logger: logging.Logger, exact_secrets: Iterable[str] = ())
     for handler in logger.handlers:
         handler.addFilter(redaction_filter)
     return redaction_filter
-

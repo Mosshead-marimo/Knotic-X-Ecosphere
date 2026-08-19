@@ -1,12 +1,13 @@
 """Typed MCP gateway configuration and startup validation."""
 
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
-from ipaddress import ip_address
 from urllib.parse import urlparse
 
-from knotic_config import CommonSettings, RuntimeEnvironment, SecretProvider, load_settings
 from pydantic import Field, SecretStr, field_validator, model_validator
+
+from knotic_config import CommonSettings, RuntimeEnvironment, SecretProvider, load_settings
 
 _REQUIRED_SECRETS = {
     "database_url": "KNOTIC_DATABASE_URL",

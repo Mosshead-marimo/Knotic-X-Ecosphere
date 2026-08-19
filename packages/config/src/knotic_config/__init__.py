@@ -11,11 +11,11 @@ from .secrets import (
 )
 
 __all__ = [
+    "REDACTED",
     "CommonSettings",
     "EnvironmentSecretProvider",
     "LogLevel",
     "MappingSecretProvider",
-    "REDACTED",
     "RedactingFilter",
     "RuntimeEnvironment",
     "SecretProvider",
@@ -27,4 +27,3 @@ __all__ = [
     "redact_value",
     "secret_values",
 ]
-

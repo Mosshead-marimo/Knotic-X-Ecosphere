@@ -393,6 +393,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: The executable MCP validator confirmed exact System Design inventory, unique versioned names, top-level closed schemas, required fields, scope/approval/timeout/retry policies, mandatory side-effect idempotency, audit/failure fields, and FR-08 through FR-14 traceability. API and data-model regressions and whitespace checks passed.
 - Follow-up: Implement MCP gateway/tool adapters in Phase 3; complete `P0-T008` topology.
 
+### 2026-08-20 — Added reproducible local service topology
+
+- Phase: 0 (`P0-T008`)
+- Status: Added
+- Files: `compose.yaml`, `.dockerignore`, `infra/docker`, backend/MCP health applications, frontend health proxy, manifests, lockfile, and repository documentation
+- Summary: Added digest-pinned multi-stage production images and a five-service Compose topology for frontend, Flask, MCP, PostgreSQL/pgvector, and Redis. Startup is dependency-health driven; state is persistent; data services are isolated; app containers are non-root, read-only, resource-limited, and protected with `no-new-privileges`.
+- Verification: Passed Compose configuration, a clean image build, and a live `--wait` startup. All five containers became healthy; backend readiness confirmed PostgreSQL, Redis, and MCP; the frontend proxy reported backend readiness; pgvector 0.8.6 was installed; all application containers ran as UID 10001 with read-only roots; and a Redis restart recovered without fixed sleeps. Docker Scout external analysis was not run because it requires transmitting image-derived metadata; the required isolated CI image scan is completed by `P0-T009` before this task is closed.
+- Follow-up: Complete `P0-T009` quality gates and its isolated container scan, then close `P0-T008`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

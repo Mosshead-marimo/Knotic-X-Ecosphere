@@ -27,6 +27,7 @@
     "typecheck": "npm run typecheck --workspace @knotic/frontend",
     "validate:api-contract": "node scripts/validate-api-contract.mjs",
     "validate:data-model": "node scripts/validate-data-model.mjs",
+    "validate:mcp-contract": "node scripts/validate-mcp-contract.mjs",
     "scan:frontend-secrets": "node scripts/scan-frontend-secrets.mjs",
     "audit:dependencies": "npm audit --audit-level=high"
   },

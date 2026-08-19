@@ -384,6 +384,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Passed the executable data-model validator for all entities, seven Redis key contracts, every structured SalesState field, all eight API event lifecycles, production controls, and explicit FR-04, FR-05, FR-11, FR-12, FR-13, and FR-14 traceability. Re-ran the API contract validator and `git diff --check` successfully.
 - Follow-up: Implement physical migrations with their owning feature tasks and complete `P0-T007` MCP contracts.
 
+### 2026-08-20 — Defined governed MCP tool contracts
+
+- Phase: 0 (`P0-T007`)
+- Status: Documented
+- Files: `docs/MCP_TOOLS.md`, `docs/contracts/mcp-tools.v1.json`, `scripts/validate-mcp-contract.mjs`, root scripts, task status, and README
+- Summary: Defined all 20 Sales, Knowledge, and Integration MCP tools with versioned input/output schemas, trusted invocation context, scopes, deterministic approval, side-effect/idempotency classification, bounded timeouts/retries, one result/error model, safe provider-specific failure behavior, and durable audit requirements.
+- Verification: The executable MCP validator confirmed exact System Design inventory, unique versioned names, top-level closed schemas, required fields, scope/approval/timeout/retry policies, mandatory side-effect idempotency, audit/failure fields, and FR-08 through FR-14 traceability. API and data-model regressions and whitespace checks passed.
+- Follow-up: Implement MCP gateway/tool adapters in Phase 3; complete `P0-T008` topology.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

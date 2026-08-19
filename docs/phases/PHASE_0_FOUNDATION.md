@@ -53,7 +53,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Every required state field and audit event has one authoritative storage location and lifecycle.
 - Verify: Trace FR-04, FR-05, FR-11–FR-14 to the model.
 
-### [ ] P0-T007 — Define MCP contracts and policies
+### [x] P0-T007 — Define MCP contracts and policies
 
 - Dependencies: P0-T004, P0-T005.
 - Implement: `docs/MCP_TOOLS.md` with versioned tool schemas, authentication, authorization, approval levels, idempotency, timeouts, retries, audit fields, and failure semantics.

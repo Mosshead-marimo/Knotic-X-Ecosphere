@@ -46,7 +46,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Frontend and backend can be independently implemented from the contract; no ambiguous success or error states remain.
 - Verify: OpenAPI/schema validation and contract examples.
 
-### [ ] P0-T006 — Define durable and active data models
+### [x] P0-T006 — Define durable and active data models
 
 - Dependencies: P0-T004.
 - Implement: `docs/DATA_MODEL.md` covering PostgreSQL entities, Redis keys/TTL, pgvector records, identifiers, relationships, invariants, retention, deletion, encryption, and migration strategy.

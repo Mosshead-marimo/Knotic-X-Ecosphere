@@ -399,8 +399,8 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Status: Added
 - Files: `compose.yaml`, `.dockerignore`, `infra/docker`, backend/MCP health applications, frontend health proxy, manifests, lockfile, and repository documentation
 - Summary: Added digest-pinned multi-stage production images and a five-service Compose topology for frontend, Flask, MCP, PostgreSQL/pgvector, and Redis. Startup is dependency-health driven; state is persistent; data services are isolated; app containers are non-root, read-only, resource-limited, and protected with `no-new-privileges`.
-- Verification: Passed Compose configuration, a clean image build, and a live `--wait` startup. All five containers became healthy; backend readiness confirmed PostgreSQL, Redis, and MCP; the frontend proxy reported backend readiness; pgvector 0.8.6 was installed; all application containers ran as UID 10001 with read-only roots; and a Redis restart recovered without fixed sleeps. Docker Scout external analysis was not run because it requires transmitting image-derived metadata; the required isolated CI image scan is completed by `P0-T009` before this task is closed.
-- Follow-up: Complete `P0-T009` quality gates and its isolated container scan, then close `P0-T008`.
+- Verification: Passed Compose configuration, a clean image build, and a live `--wait` startup. All five containers became healthy; backend readiness confirmed PostgreSQL, Redis, and MCP; the frontend proxy reported backend readiness; pgvector 0.8.6 was installed; all application containers ran as UID 10001 with read-only roots; and a Redis restart recovered without fixed sleeps. Independent GitHub runners rebuilt and scanned frontend, backend, and MCP images with Trivy; all three HIGH/CRITICAL gates passed after npm/corepack were removed from the frontend runtime attack surface.
+- Follow-up: None.
 
 ### 2026-08-20 — Established local and CI quality gates
 
@@ -408,8 +408,17 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Status: Added
 - Files: `.github/workflows/quality.yml`, `docs/QUALITY_GATES.md`, root/frontend manifests, Ruff/mypy/pytest/ESLint configuration, health tests, quality/secret scripts, Docker frontend build, and lockfiles
 - Summary: Added one fail-fast local gate matching CI for runtime pins, formatting, linting, strict TypeScript and Python typing, unit and contract tests, credential scans, dependency audits, and deliberate invalid-fixture proof. Added isolated per-image Trivy jobs pinned to an immutable action commit and made frontend lint/type checks mandatory image-build stages. Corrected the unsupported ESLint 10/Next.js combination to the pinned ESLint 9 maintenance release.
-- Verification: Ruff lint/format and strict mypy passed across all Python source; 19 tests passed; all API/data/MCP validators passed; repository and frontend secret scans passed; the deliberate credential fixture was rejected; pip-audit found no known third-party vulnerabilities; npm install/build reported zero vulnerabilities; and frontend ESLint, strict TypeScript, and Next.js production build passed in the exact pinned container toolchain. Server-side CI and image-scan results are verified on the stacked pull request before task closure.
-- Follow-up: Verify required GitHub checks, configure/confirm the protected-branch ruleset, close `P0-T008`/`P0-T009`, and complete `P0-T010`.
+- Verification: On stacked PR #9, the `quality` job passed clean installation, runtime verification, Ruff, strict mypy, 19 tests, three contract validators, frontend/repository secret scans, the deliberate credential rejection, dependency audits, ESLint, strict TypeScript, and the production build. All three independent Trivy HIGH/CRITICAL image gates passed. GitHub's branch-protection API returned HTTP 403 because protection is unavailable for this private repository on its current plan.
+- Follow-up: Upgrade the repository plan or make it public and require all checks listed in `docs/QUALITY_GATES.md`; only then mark `P0-T009` complete.
+
+### 2026-08-20 — Added operational documentation and clean bootstrap gate
+
+- Phase: 0 (`P0-T010`)
+- Status: Documented
+- Files: `docs/DEVELOPMENT.md`, `docs/RELEASE.md`, `docs/ROLLBACK.md`, `docs/INCIDENT_RESPONSE.md`, operational validator, quality workflow, deployment documentation, and README
+- Summary: Added exact fresh-checkout setup, validation, configuration, migration, troubleshooting, release, rollback/recovery, incident severity, triage, contact-role, reconciliation, and production release-gate guidance. Added an executable documentation validator and an independent clean-runner topology job that builds, starts, probes, restarts, recovers, and tears down the full stack.
+- Verification: Operational documentation validation and repository secret scanning passed. On stacked PR #10, quality, all three Trivy image scans, and the clean-runner topology job passed; the topology reached healthy state, both HTTP readiness paths passed, and Redis restart recovery passed without fixed sleeps.
+- Follow-up: Resolve `P0-T009`, map roles to named private on-call contacts, and obtain a new-engineer walkthrough sign-off before marking `P0-T010` complete.
 
 ## Maintenance rules
 

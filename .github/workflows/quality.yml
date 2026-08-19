@@ -52,3 +52,19 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           severity: HIGH,CRITICAL
+
+  topology:
+    name: topology
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker compose config --quiet
+      - run: docker compose up -d --build --wait --wait-timeout 180
+      - run: curl --fail --show-error http://127.0.0.1:8080/api/v1/health/ready
+      - run: curl --fail --show-error http://127.0.0.1:3000/api/health
+      - run: docker compose restart redis
+      - run: docker compose up -d --wait --wait-timeout 180
+      - if: always()
+        run: docker compose down

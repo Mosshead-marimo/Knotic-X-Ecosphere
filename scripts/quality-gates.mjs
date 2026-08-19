@@ -11,6 +11,7 @@ const gates = [
   ["npm", ["run", "validate:api-contract"]],
   ["npm", ["run", "validate:data-model"]],
   ["npm", ["run", "validate:mcp-contract"]],
+  ["npm", ["run", "validate:operations-docs"]],
   ["npm", ["run", "scan:frontend-secrets"]],
   ["npm", ["run", "scan:repository-secrets"]],
   ["npm", ["run", "quality:self-test"]],

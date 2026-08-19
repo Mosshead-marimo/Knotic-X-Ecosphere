@@ -21,6 +21,7 @@ The `Required quality gates` workflow runs on every pull request and on pushes t
 - `container-security (frontend)`
 - `container-security (backend)`
 - `container-security (mcp)`
+- `topology`
 
 The container jobs build from the committed Dockerfiles and use an immutable Trivy action to reject fixable HIGH or CRITICAL findings. Workflow permissions are read-only; third-party actions are pinned to commits; jobs have timeouts; redundant runs are cancelled.
 

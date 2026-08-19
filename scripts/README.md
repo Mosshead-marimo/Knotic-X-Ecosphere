@@ -5,3 +5,4 @@ Portable, reviewed repository automation belongs here. Scripts must fail safely,
 - `validate-api-contract.mjs` validates the OpenAPI 3.1 document, contract invariants, event mappings, and executable examples without network access or generated output.
 - `validate-data-model.mjs` validates durable/active ownership, entities, Redis key contracts, lifecycle controls, and requirement traceability without external services.
 - `validate-mcp-contract.mjs` validates all logical MCP tool schemas and their authorization, approval, idempotency, retry, audit, failure, and requirement policies.
+- `validate-operations-docs.mjs` fails when required setup, release, rollback, or incident guidance is absent.

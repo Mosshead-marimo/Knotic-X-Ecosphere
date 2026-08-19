@@ -33,6 +33,7 @@
     "validate:api-contract": "node scripts/validate-api-contract.mjs",
     "validate:data-model": "node scripts/validate-data-model.mjs",
     "validate:mcp-contract": "node scripts/validate-mcp-contract.mjs",
+    "validate:operations-docs": "node scripts/validate-operations-docs.mjs",
     "scan:frontend-secrets": "node scripts/scan-frontend-secrets.mjs",
     "scan:repository-secrets": "node scripts/scan-repository-secrets.mjs",
     "audit:dependencies": "npm audit --audit-level=high && uv run pip-audit",

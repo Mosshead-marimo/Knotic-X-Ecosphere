@@ -28,6 +28,6 @@ uv sync --locked --all-packages --all-groups
 
 The frontend scaffold builds with the pinned dependencies. Flask and MCP dependencies are installed, but their process entry points deliberately remain non-operational until later Phase 0 tasks establish configuration and service bootstrapping. Health checks and Docker topology are also deferred to their numbered tasks.
 
-See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, and `docs/API_CONTRACTS.md` for versioned browser and internal voice APIs. The next task is `P0-T006`, which defines durable and active data models.
+See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, `docs/API_CONTRACTS.md` for versioned browser and internal voice APIs, and `docs/DATA_MODEL.md` for durable/active ownership. The next task is `P0-T007`, which defines MCP tool contracts and policies.
 
 Configuration and secret-handling behavior is documented in `docs/CONFIGURATION.md`. `.env.example` is a placeholder-only local template; services never load it implicitly.

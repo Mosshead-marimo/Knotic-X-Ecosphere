@@ -46,21 +46,21 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Acceptance: Frontend and backend can be independently implemented from the contract; no ambiguous success or error states remain.
 - Verify: OpenAPI/schema validation and contract examples.
 
-### [ ] P0-T006 — Define durable and active data models
+### [x] P0-T006 — Define durable and active data models
 
 - Dependencies: P0-T004.
 - Implement: `docs/DATA_MODEL.md` covering PostgreSQL entities, Redis keys/TTL, pgvector records, identifiers, relationships, invariants, retention, deletion, encryption, and migration strategy.
 - Acceptance: Every required state field and audit event has one authoritative storage location and lifecycle.
 - Verify: Trace FR-04, FR-05, FR-11–FR-14 to the model.
 
-### [ ] P0-T007 — Define MCP contracts and policies
+### [x] P0-T007 — Define MCP contracts and policies
 
 - Dependencies: P0-T004, P0-T005.
 - Implement: `docs/MCP_TOOLS.md` with versioned tool schemas, authentication, authorization, approval levels, idempotency, timeouts, retries, audit fields, and failure semantics.
 - Acceptance: Every tool in `System_Design.md` has validated inputs, outputs, side effects, and safe failure behavior.
 - Verify: Schema validation and tool/requirement traceability review.
 
-### [ ] P0-T008 — Create local and CI service topology
+### [x] P0-T008 — Create local and CI service topology
 
 - Dependencies: P0-T002, P0-T003.
 - Implement: Dockerfiles and Compose services for frontend, backend, MCP, PostgreSQL/pgvector, and Redis; health checks, non-root containers, persistent volumes, and resource limits.
@@ -73,6 +73,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Implement: Formatting, linting, strict TypeScript, Python type checking, unit tests, contract tests, secret scanning, dependency scanning, and CI branch gates.
 - Acceptance: CI blocks merge on any required check; local commands match CI behavior.
 - Verify: Passing pipeline plus deliberate failing-change test.
+- External blocker: All workflow checks pass, but this private repository's current GitHub plan rejects branch-protection configuration with HTTP 403. Upgrade the plan or make the repository public, then require the checks in `docs/QUALITY_GATES.md` before marking complete.
 
 ### [ ] P0-T010 — Create operational documentation baseline
 
@@ -80,6 +81,7 @@ Create a reproducible, secure foundation and remove contract ambiguity before bu
 - Implement: Developer setup, test, migration, configuration, incident-contact, release, and rollback instructions.
 - Acceptance: A new engineer can bootstrap and validate the stack without undocumented steps.
 - Verify: Fresh-environment walkthrough by someone other than the author.
+- External blocker: The independent clean-runner bootstrap passes. Completion still requires `P0-T009`, named private on-call mappings, and a walkthrough sign-off from a new engineer.
 
 ## Phase gate
 

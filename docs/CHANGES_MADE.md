@@ -375,6 +375,51 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Parsed and structurally validated the OpenAPI 3.1/draft-2020-12 document; resolved every local reference; verified fourteen unique versioned operation IDs and their narrative registry entries; enforced cookie or workload authentication with explicit unauthenticated health/OIDC exceptions; enforced CSRF/idempotency on state-changing browser calls and idempotency on internal calls; verified cursor/limit pagination, explicit success and safe error coverage, request IDs on every response, ErrorEnvelope on every 4xx/5xx response, all eight event-to-payload mappings, and absence of server-secret fields in examples. Validated thirteen positive examples against their declared schemas and confirmed five deliberately invalid fixtures are rejected, including missing fields, ambiguous response disposition, invalid terminal operation state, inconsistent pagination, and incorrectly typed requirement updates. `git diff --check` and generated-artifact scans passed.
 - Follow-up: Complete `P0-T006` and align durable/active storage lifecycles with these identifiers, versions, event envelopes, idempotency records, and operation states; add the validator and producer/consumer contract tests to CI in `P0-T009`.
 
+### 2026-08-20 — Defined durable, active, and vector data ownership
+
+- Phase: 0 (`P0-T006`)
+- Status: Documented
+- Files: `docs/DATA_MODEL.md`, `scripts/validate-data-model.mjs`, root scripts, task status, and repository README
+- Summary: Defined UUIDv7 and tenant-safe identifier conventions, 28 PostgreSQL entities with indexed composite foreign keys and forced RLS, exact Redis active-state keys/TTLs/rebuild behavior, versioned pgvector knowledge ownership, state/event authority, optimistic concurrency, outbox/inbox and idempotency patterns, provider-confirmation invariants, application envelope encryption, retention/erasure, and expand/migrate/contract rules.
+- Verification: Passed the executable data-model validator for all entities, seven Redis key contracts, every structured SalesState field, all eight API event lifecycles, production controls, and explicit FR-04, FR-05, FR-11, FR-12, FR-13, and FR-14 traceability. Re-ran the API contract validator and `git diff --check` successfully.
+- Follow-up: Implement physical migrations with their owning feature tasks and complete `P0-T007` MCP contracts.
+
+### 2026-08-20 — Defined governed MCP tool contracts
+
+- Phase: 0 (`P0-T007`)
+- Status: Documented
+- Files: `docs/MCP_TOOLS.md`, `docs/contracts/mcp-tools.v1.json`, `scripts/validate-mcp-contract.mjs`, root scripts, task status, and README
+- Summary: Defined all 20 Sales, Knowledge, and Integration MCP tools with versioned input/output schemas, trusted invocation context, scopes, deterministic approval, side-effect/idempotency classification, bounded timeouts/retries, one result/error model, safe provider-specific failure behavior, and durable audit requirements.
+- Verification: The executable MCP validator confirmed exact System Design inventory, unique versioned names, top-level closed schemas, required fields, scope/approval/timeout/retry policies, mandatory side-effect idempotency, audit/failure fields, and FR-08 through FR-14 traceability. API and data-model regressions and whitespace checks passed.
+- Follow-up: Implement MCP gateway/tool adapters in Phase 3; complete `P0-T008` topology.
+
+### 2026-08-20 — Added reproducible local service topology
+
+- Phase: 0 (`P0-T008`)
+- Status: Added
+- Files: `compose.yaml`, `.dockerignore`, `infra/docker`, backend/MCP health applications, frontend health proxy, manifests, lockfile, and repository documentation
+- Summary: Added digest-pinned multi-stage production images and a five-service Compose topology for frontend, Flask, MCP, PostgreSQL/pgvector, and Redis. Startup is dependency-health driven; state is persistent; data services are isolated; app containers are non-root, read-only, resource-limited, and protected with `no-new-privileges`.
+- Verification: Passed Compose configuration, a clean image build, and a live `--wait` startup. All five containers became healthy; backend readiness confirmed PostgreSQL, Redis, and MCP; the frontend proxy reported backend readiness; pgvector 0.8.6 was installed; all application containers ran as UID 10001 with read-only roots; and a Redis restart recovered without fixed sleeps. Independent GitHub runners rebuilt and scanned frontend, backend, and MCP images with Trivy; all three HIGH/CRITICAL gates passed after npm/corepack were removed from the frontend runtime attack surface.
+- Follow-up: None.
+
+### 2026-08-20 — Established local and CI quality gates
+
+- Phase: 0 (`P0-T009`)
+- Status: Added
+- Files: `.github/workflows/quality.yml`, `docs/QUALITY_GATES.md`, root/frontend manifests, Ruff/mypy/pytest/ESLint configuration, health tests, quality/secret scripts, Docker frontend build, and lockfiles
+- Summary: Added one fail-fast local gate matching CI for runtime pins, formatting, linting, strict TypeScript and Python typing, unit and contract tests, credential scans, dependency audits, and deliberate invalid-fixture proof. Added isolated per-image Trivy jobs pinned to an immutable action commit and made frontend lint/type checks mandatory image-build stages. Corrected the unsupported ESLint 10/Next.js combination to the pinned ESLint 9 maintenance release.
+- Verification: On stacked PR #9, the `quality` job passed clean installation, runtime verification, Ruff, strict mypy, 19 tests, three contract validators, frontend/repository secret scans, the deliberate credential rejection, dependency audits, ESLint, strict TypeScript, and the production build. All three independent Trivy HIGH/CRITICAL image gates passed. GitHub's branch-protection API returned HTTP 403 because protection is unavailable for this private repository on its current plan.
+- Follow-up: Upgrade the repository plan or make it public and require all checks listed in `docs/QUALITY_GATES.md`; only then mark `P0-T009` complete.
+
+### 2026-08-20 — Added operational documentation and clean bootstrap gate
+
+- Phase: 0 (`P0-T010`)
+- Status: Documented
+- Files: `docs/DEVELOPMENT.md`, `docs/RELEASE.md`, `docs/ROLLBACK.md`, `docs/INCIDENT_RESPONSE.md`, operational validator, quality workflow, deployment documentation, and README
+- Summary: Added exact fresh-checkout setup, validation, configuration, migration, troubleshooting, release, rollback/recovery, incident severity, triage, contact-role, reconciliation, and production release-gate guidance. Added an executable documentation validator and an independent clean-runner topology job that builds, starts, probes, restarts, recovers, and tears down the full stack.
+- Verification: Operational documentation validation and repository secret scanning passed. On stacked PR #10, quality, all three Trivy image scans, and the clean-runner topology job passed; the topology reached healthy state, both HTTP readiness paths passed, and Redis restart recovery passed without fixed sleeps.
+- Follow-up: Resolve `P0-T009`, map roles to named private on-call contacts, and obtain a new-engineer walkthrough sign-off before marking `P0-T010` complete.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

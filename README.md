@@ -26,8 +26,14 @@ npm ci
 uv sync --locked --all-packages --all-groups
 ```
 
-The frontend scaffold builds with the pinned dependencies. Flask and MCP dependencies are installed, but their process entry points deliberately remain non-operational until later Phase 0 tasks establish configuration and service bootstrapping. Health checks and Docker topology are also deferred to their numbered tasks.
+The frontend, Flask API, MCP health shell, PostgreSQL/pgvector, and Redis run together locally with dependency-aware health checks:
 
-See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, and `docs/API_CONTRACTS.md` for versioned browser and internal voice APIs. The next task is `P0-T006`, which defines durable and active data models.
+```text
+docker compose up -d --build --wait --wait-timeout 180
+```
+
+See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/QUALITY_GATES.md` for local/CI enforcement, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, `docs/API_CONTRACTS.md` for versioned APIs, `docs/DATA_MODEL.md` for data ownership, and `docs/MCP_TOOLS.md` for governed tool contracts. P0-T009 and P0-T010 implementation is present; their external completion gates are recorded in the Phase 0 task file.
 
 Configuration and secret-handling behavior is documented in `docs/CONFIGURATION.md`. `.env.example` is a placeholder-only local template; services never load it implicitly.
+
+Developer bootstrap, release, rollback, and incident procedures are in `docs/DEVELOPMENT.md`, `docs/RELEASE.md`, `docs/ROLLBACK.md`, and `docs/INCIDENT_RESPONSE.md`.

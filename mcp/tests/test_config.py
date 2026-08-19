@@ -4,9 +4,9 @@ import unittest
 from contextlib import redirect_stderr
 from unittest.mock import patch
 
-from knotic_config import MappingSecretProvider, SecretResolutionError, configuration_error_summary
 from pydantic import ValidationError
 
+from knotic_config import MappingSecretProvider, SecretResolutionError, configuration_error_summary
 from knotic_mcp.__main__ import main
 from knotic_mcp.config import load_mcp_settings
 
@@ -67,4 +67,3 @@ class McpSettingsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

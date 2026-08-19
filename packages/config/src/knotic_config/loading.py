@@ -2,17 +2,14 @@
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TypeVar
 
 from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings
 
 from .secrets import EnvironmentSecretProvider, SecretProvider, resolve_secrets
 
-SettingsT = TypeVar("SettingsT", bound=BaseSettings)
 
-
-def load_settings(
+def load_settings[SettingsT: BaseSettings](
     settings_type: type[SettingsT],
     *,
     required_secrets: Mapping[str, str],
@@ -24,7 +21,8 @@ def load_settings(
 
     provider = secret_provider or EnvironmentSecretProvider()
     secret_values = resolve_secrets(provider, required_secrets, optional_secrets)
-    return settings_type(_env_file=env_file, **secret_values)
+    # BaseSettings' generated initializer cannot express dynamic model field names.
+    return settings_type(_env_file=env_file, **secret_values)  # type: ignore[arg-type]
 
 
 def configuration_error_summary(error: Exception) -> str:
@@ -46,4 +44,3 @@ def secret_values(settings: BaseSettings) -> tuple[str, ...]:
             if raw:
                 values.append(raw)
     return tuple(values)
-

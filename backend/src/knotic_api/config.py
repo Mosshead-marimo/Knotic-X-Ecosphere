@@ -1,12 +1,13 @@
 """Typed Flask service configuration and startup validation."""
 
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
-from ipaddress import ip_address
+
+from pydantic import Field, SecretStr, field_validator, model_validator
 
 from knotic_config import CommonSettings, RuntimeEnvironment, SecretProvider, load_settings
-from pydantic import Field, SecretStr, field_validator, model_validator
 
 _REQUIRED_SECRETS = {
     "database_url": "KNOTIC_DATABASE_URL",
@@ -104,9 +105,7 @@ class BackendSettings(CommonSettings):
             invalid = [
                 origin
                 for origin in self.allowed_origins
-                if origin == "*"
-                or not origin.startswith("https://")
-                or _is_local_hostname(urlparse(origin).hostname)
+                if origin == "*" or not origin.startswith("https://") or _is_local_hostname(urlparse(origin).hostname)
             ]
             if invalid:
                 raise ValueError("managed-environment origins must be explicit HTTPS origins")

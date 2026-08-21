@@ -10,12 +10,25 @@ from flask import Flask, jsonify
 from flask.typing import ResponseReturnValue
 
 from .config import BackendSettings, load_backend_settings
+from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 
 
-def create_app(settings: BackendSettings | None = None) -> Flask:
+def create_app(
+    settings: BackendSettings | None = None,
+    *,
+    lifecycle_dependencies: LifecycleDependencies | None = None,
+) -> Flask:
     resolved = settings or load_backend_settings()
     app = Flask(__name__)
     app.config["KNOTIC_SETTINGS"] = resolved
+    dependencies = lifecycle_dependencies or build_lifecycle_dependencies(
+        database_url=resolved.database_url.get_secret_value(),
+        redis_url=resolved.redis_url.get_secret_value(),
+        environment=resolved.environment.value,
+        security_key=resolved.session_security_key.get_secret_value().encode(),
+        allowed_origins=resolved.allowed_origins,
+    )
+    register_lifecycle_api(app, dependencies)
 
     @app.get("/api/v1/health/live")
     def live() -> ResponseReturnValue:

@@ -177,8 +177,10 @@ class Outcome(DomainModel):
 
     @model_validator(mode="after")
     def require_provider_confirmation(self) -> Outcome:
-        if self.outcome == OutcomeType.DEMO_BOOKED and (self.source != "PROVIDER" or self.source_reference is None):
-            raise ValueError("DEMO_BOOKED requires a provider confirmation reference")
+        if self.outcome == OutcomeType.ENTERPRISE_DEMO_BOOKED and (
+            self.source != "PROVIDER" or self.source_reference is None
+        ):
+            raise ValueError("ENTERPRISE_DEMO_BOOKED requires a provider confirmation reference")
         return self
 
 

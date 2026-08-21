@@ -456,6 +456,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff and strict mypy passed. Six real-PostgreSQL migration/repository tests passed for fresh/head migration, populated rollback, injected mid-transaction rollback, tenant-scoped reads, legal optimistic transitions, stale-version rejection, unique idempotency reservation, different-payload replay detection, and exactly one business record. The status-alignment migration upgraded cleanly and its downgrade translates in-flight/failed states to the prior schema vocabulary before restoring its constraints. CI includes these tests in the pinned persistence job.
 - Follow-up: Implement `P1-T005` authenticated, idempotent, rate-limited session lifecycle APIs on these boundaries.
 
+### 2026-08-21 — Implemented authenticated session lifecycle APIs
+
+- Phase: 1 (`P1-T005`, GitHub #18)
+- Status: Added
+- Files: Flask lifecycle API/security composition, server-session/rate-limit/replay security primitives, lifecycle contract tests, configuration and secret inventory, dependency manifests/lock, CI persistence job, backend documentation, Phase 1 task status
+- Summary: Implemented contract-aligned create/read/end session routes with strict JSON and IANA locale/timezone validation, UUID request/correlation propagation, opaque Redis-backed browser authentication, exact-origin and session-bound HMAC CSRF enforcement, fixed-window per-actor rate limits, tenant-hidden reads, optimistic end transitions, durable lifecycle events/outcomes, and safe error envelopes. Mutation idempotency uses HMAC-blinded keys, canonical request hashes, atomic PostgreSQL reservations, different-payload conflict detection, and AES-256-GCM encrypted response replay. Added the required session security secret and purpose-separated derived keys. Aligned the domain outcome vocabulary and reviewed schema snapshots with the already-accepted OpenAPI/requirements contract.
+- Verification: Ruff, strict mypy, domain schema snapshots, and configuration/health tests passed; the full suite passed 38 tests with both real persistence services enabled. Three end-to-end Flask tests covered unauthenticated/origin/CSRF/validation failures, OpenAPI JSON Schema validation of live success/error bodies, create and end replay, encrypted replay-at-rest proof, different-payload conflict, stale version conflict, cross-tenant 404 isolation, exactly one session/outcome, ordered lifecycle events, and rate-limit headers. The digest-based backend image rebuilt successfully and ran healthy as UID 10001 with a read-only root; disabling Gunicorn's optional control socket removed its only attempted home-directory write. The full persistence CI job now runs migration, Redis, repository, and lifecycle suites on pinned service images.
+- Follow-up: Continue with `P1-T006`; OIDC login/session issuance remains required before external production access, per the existing API contract.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

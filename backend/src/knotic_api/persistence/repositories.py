@@ -49,7 +49,17 @@ class SessionRecord:
     lead_id: UUID | None
     version: int
     started_at: datetime
+    created_at: datetime
+    updated_at: datetime
     ended_at: datetime | None
+    current_topic: str | None
+    current_intent: str | None
+    buying_stage: str | None
+    qualification_score: int | None
+    next_best_action: str | None
+    summary_ciphertext: bytes | None
+    latest_request_ciphertext: bytes | None
+    outcome: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +184,7 @@ class SessionRepository(TenantRepository):
         expected_status: SessionStatus,
         target_status: SessionStatus,
         at: datetime,
+        outcome: str | None = None,
     ) -> SessionRecord | None:
         allowed = {
             SessionStatus.CREATED: {SessionStatus.ACTIVE, SessionStatus.ENDING, SessionStatus.FAILED},
@@ -187,6 +198,16 @@ class SessionRepository(TenantRepository):
         if at.tzinfo is None or at.utcoffset() is None:
             raise ValueError("transition timestamp must be timezone-aware")
         terminal = target_status in {SessionStatus.ENDED, SessionStatus.FAILED}
+        if outcome is not None and not terminal:
+            raise ValueError("outcome may be assigned only on a terminal transition")
+        values: dict[str, Any] = {
+            "status": target_status.value,
+            "version": expected_version + 1,
+            "updated_at": at,
+            "ended_at": at if terminal else None,
+        }
+        if outcome is not None:
+            values["outcome"] = outcome
         row = (
             self.connection.execute(
                 schema.sales_sessions.update()
@@ -196,12 +217,7 @@ class SessionRepository(TenantRepository):
                     schema.sales_sessions.c.version == expected_version,
                     schema.sales_sessions.c.status == expected_status.value,
                 )
-                .values(
-                    status=target_status.value,
-                    version=expected_version + 1,
-                    updated_at=at,
-                    ended_at=at if terminal else None,
-                )
+                .values(**values)
                 .returning(schema.sales_sessions)
             )
             .mappings()
@@ -220,7 +236,17 @@ class SessionRepository(TenantRepository):
             lead_id=row["lead_id"],
             version=row["version"],
             started_at=row["started_at"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
             ended_at=row["ended_at"],
+            current_topic=row["current_topic"],
+            current_intent=row["current_intent"],
+            buying_stage=row["buying_stage"],
+            qualification_score=row["qualification_score"],
+            next_best_action=row["next_best_action"],
+            summary_ciphertext=row["summary_ciphertext"],
+            latest_request_ciphertext=row["latest_request_ciphertext"],
+            outcome=row["outcome"],
         )
 
 
@@ -485,6 +511,17 @@ class OutcomeRepository(TenantRepository):
 
 
 class EventRepository(TenantRepository):
+    def next_sequence(self, session_id: UUID) -> int:
+        latest = self.connection.scalar(
+            sa.select(sa.func.coalesce(sa.func.max(schema.domain_events.c.sequence), 0)).where(
+                schema.domain_events.c.tenant_id == self.tenant_id,
+                schema.domain_events.c.session_id == session_id,
+            )
+        )
+        if latest is None:
+            raise RuntimeError("event sequence query returned no value")
+        return int(latest) + 1
+
     def append(self, event: DomainEvent) -> UUID:
         self._require_tenant(event.tenant_id)
         self.connection.execute(

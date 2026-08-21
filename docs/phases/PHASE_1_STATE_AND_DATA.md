@@ -32,7 +32,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: Concurrent turns cannot silently overwrite newer state; stale or corrupt cache entries recover safely.
 - Verify: Repository, concurrency, TTL, corruption, and Redis outage tests.
 
-### [ ] P1-T004 — Implement durable repositories and unit-of-work boundaries
+### [x] P1-T004 — Implement durable repositories and unit-of-work boundaries
 
 - Dependencies: P1-T002.
 - Implement: Typed repositories for sessions, leads, messages, requirements, objections, meetings, follow-ups, tools, outcomes, and events; transaction boundaries and idempotent writes.

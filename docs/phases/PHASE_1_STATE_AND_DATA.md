@@ -18,7 +18,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: Invalid enum values, scores, identifiers, and state transitions are rejected deterministically.
 - Verify: Model unit tests, serialization round trips, schema snapshots.
 
-### [ ] P1-T002 — Implement PostgreSQL schema and migrations
+### [x] P1-T002 — Implement PostgreSQL schema and migrations
 
 - Dependencies: P1-T001.
 - Implement: Tables, constraints, indexes, foreign keys, timestamps, soft/deletion policy, migration tooling, rollback rules, and pgvector extension setup.

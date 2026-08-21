@@ -1,0 +1,9 @@
+# Opt-in host access for local integration tests. The base topology keeps the
+# data network internal and does not publish database ports.
+services:
+  postgres:
+    ports: ["127.0.0.1:5433:5432"]
+    networks: [data, integration-host]
+
+networks:
+  integration-host:

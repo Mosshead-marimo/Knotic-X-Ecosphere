@@ -420,6 +420,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Operational documentation validation and repository secret scanning passed. On stacked PR #10, quality, all three Trivy image scans, and the clean-runner topology job passed; the topology reached healthy state, both HTTP readiness paths passed, and Redis restart recovery passed without fixed sleeps.
 - Follow-up: Resolve `P0-T009`, map roles to named private on-call contacts, and obtain a new-engineer walkthrough sign-off before marking `P0-T010` complete.
 
+### 2026-08-21 — Implemented versioned sales domain models
+
+- Phase: 1 (`P1-T001`, GitHub #14)
+- Status: Added
+- Files: `backend/src/knotic_api/domain`, model tests and schema hash snapshots, Phase 1 task status
+- Summary: Added strict immutable version-1 models for SalesState, customers, requirements, objections, qualification, messages, tool calls, outcomes, and domain events. Added RFC 9562 UUIDv7 generation/validation, bounded enums and scores, typed requirement values, tenant/session ownership checks, provider-confirmed booking invariants, and deterministic session-transition rules.
+- Verification: Ruff formatting/linting and strict mypy passed; five unit tests passed for invalid identifiers/enums/scores/transitions, typed business invariants, JSON round trips, and nine reviewed schema snapshots; whitespace and repository secret scans passed.
+- Follow-up: Implement `P1-T002` physical PostgreSQL migrations from these types.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

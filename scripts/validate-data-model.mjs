@@ -27,5 +27,5 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exitCode = 1;
 } else {
-  console.log("Data model validation passed: 28 entities, 7 Redis key contracts, complete state/event ownership, and FR-04/05/11-14 traceability.");
+  console.log("Data model validation passed: 30 entities, 7 Redis key contracts, complete state/event ownership, and FR-04/05/11-14 traceability.");
 }

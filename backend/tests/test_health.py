@@ -13,6 +13,7 @@ class BackendHealthTests(unittest.TestCase):
             redis_url=SecretStr("redis://:password@redis.internal/0"),
             mcp_auth_token=SecretStr("a" * 40),
             agora_app_certificate=SecretStr("b" * 32),
+            session_security_key=SecretStr("c" * 32),
             KNOTIC_MCP_BASE_URL="http://mcp.internal:8090",
             KNOTIC_AGORA_APP_ID="0123456789abcdef0123456789abcdef",
         )

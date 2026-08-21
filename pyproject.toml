@@ -6,6 +6,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "jsonschema==4.26.0",
     "mypy==2.3.0",
     "pip-audit==2.10.1",
     "pytest==9.1.1",
@@ -15,6 +16,7 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers --import-mode=importlib"
 testpaths = ["backend/tests", "mcp/tests", "packages/config/tests"]
+markers = ["integration: requires local PostgreSQL or Redis infrastructure"]
 
 [tool.ruff]
 target-version = "py313"

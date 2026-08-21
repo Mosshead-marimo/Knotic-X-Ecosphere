@@ -11,35 +11,35 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 
 ## Tasks
 
-### [ ] P1-T001 — Implement typed domain models
+### [x] P1-T001 — Implement typed domain models
 
 - Dependencies: P0-T006.
 - Implement: Typed `SalesState`, customer, requirement, objection, qualification, message, tool-call, outcome, and event models with validation and schema versioning.
 - Acceptance: Invalid enum values, scores, identifiers, and state transitions are rejected deterministically.
 - Verify: Model unit tests, serialization round trips, schema snapshots.
 
-### [ ] P1-T002 — Implement PostgreSQL schema and migrations
+### [x] P1-T002 — Implement PostgreSQL schema and migrations
 
 - Dependencies: P1-T001.
 - Implement: Tables, constraints, indexes, foreign keys, timestamps, soft/deletion policy, migration tooling, rollback rules, and pgvector extension setup.
 - Acceptance: Required entities are durable; invariants are enforced at the database boundary; migrations work on empty and populated databases.
 - Verify: Migration up/down rehearsal, constraint tests, query-plan review.
 
-### [ ] P1-T003 — Implement Redis active-state repository
+### [x] P1-T003 — Implement Redis active-state repository
 
 - Dependencies: P1-T001.
 - Implement: Namespaced keys, TTL, optimistic concurrency/version checks, atomic updates, serialization versioning, and connection-failure behavior.
 - Acceptance: Concurrent turns cannot silently overwrite newer state; stale or corrupt cache entries recover safely.
 - Verify: Repository, concurrency, TTL, corruption, and Redis outage tests.
 
-### [ ] P1-T004 — Implement durable repositories and unit-of-work boundaries
+### [x] P1-T004 — Implement durable repositories and unit-of-work boundaries
 
 - Dependencies: P1-T002.
 - Implement: Typed repositories for sessions, leads, messages, requirements, objections, meetings, follow-ups, tools, outcomes, and events; transaction boundaries and idempotent writes.
 - Acceptance: Partial writes roll back; duplicate requests do not create duplicate business records.
 - Verify: Integration tests with real PostgreSQL and failure injection.
 
-### [ ] P1-T005 — Implement session lifecycle APIs
+### [x] P1-T005 — Implement session lifecycle APIs
 
 - Dependencies: P0-T005, P1-T003, P1-T004.
 - Implement: Authenticated create/read/end session endpoints, request validation, error mapping, idempotency keys, rate limits, and correlation IDs.
@@ -84,4 +84,3 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 ## Phase gate
 
 All tasks pass against real Redis and PostgreSQL; restart and cache-loss recovery succeed; isolation and lifecycle controls are verified; state latency meets its approved service-level target.
-

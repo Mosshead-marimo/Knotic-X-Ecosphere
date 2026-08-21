@@ -380,7 +380,7 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Phase: 0 (`P0-T006`)
 - Status: Documented
 - Files: `docs/DATA_MODEL.md`, `scripts/validate-data-model.mjs`, root scripts, task status, and repository README
-- Summary: Defined UUIDv7 and tenant-safe identifier conventions, 28 PostgreSQL entities with indexed composite foreign keys and forced RLS, exact Redis active-state keys/TTLs/rebuild behavior, versioned pgvector knowledge ownership, state/event authority, optimistic concurrency, outbox/inbox and idempotency patterns, provider-confirmation invariants, application envelope encryption, retention/erasure, and expand/migrate/contract rules.
+- Summary: Defined UUIDv7 and tenant-safe identifier conventions, 30 PostgreSQL entities with indexed composite foreign keys and forced RLS, exact Redis active-state keys/TTLs/rebuild behavior, versioned pgvector knowledge ownership, state/event authority, optimistic concurrency, outbox/inbox and idempotency patterns, provider-confirmation invariants, application envelope encryption, retention/erasure, and expand/migrate/contract rules.
 - Verification: Passed the executable data-model validator for all entities, seven Redis key contracts, every structured SalesState field, all eight API event lifecycles, production controls, and explicit FR-04, FR-05, FR-11, FR-12, FR-13, and FR-14 traceability. Re-ran the API contract validator and `git diff --check` successfully.
 - Follow-up: Implement physical migrations with their owning feature tasks and complete `P0-T007` MCP contracts.
 
@@ -419,6 +419,51 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Added exact fresh-checkout setup, validation, configuration, migration, troubleshooting, release, rollback/recovery, incident severity, triage, contact-role, reconciliation, and production release-gate guidance. Added an executable documentation validator and an independent clean-runner topology job that builds, starts, probes, restarts, recovers, and tears down the full stack.
 - Verification: Operational documentation validation and repository secret scanning passed. On stacked PR #10, quality, all three Trivy image scans, and the clean-runner topology job passed; the topology reached healthy state, both HTTP readiness paths passed, and Redis restart recovery passed without fixed sleeps.
 - Follow-up: Resolve `P0-T009`, map roles to named private on-call contacts, and obtain a new-engineer walkthrough sign-off before marking `P0-T010` complete.
+
+### 2026-08-21 — Implemented versioned sales domain models
+
+- Phase: 1 (`P1-T001`, GitHub #14)
+- Status: Added
+- Files: `backend/src/knotic_api/domain`, model tests and schema hash snapshots, Phase 1 task status
+- Summary: Added strict immutable version-1 models for SalesState, customers, requirements, objections, qualification, messages, tool calls, outcomes, and domain events. Added RFC 9562 UUIDv7 generation/validation, bounded enums and scores, typed requirement values, tenant/session ownership checks, provider-confirmed booking invariants, and deterministic session-transition rules.
+- Verification: Ruff formatting/linting and strict mypy passed; five unit tests passed for invalid identifiers/enums/scores/transitions, typed business invariants, JSON round trips, and nine reviewed schema snapshots; whitespace and repository secret scans passed.
+- Follow-up: Implement `P1-T002` physical PostgreSQL migrations from these types.
+
+### 2026-08-21 — Implemented tenant-isolated PostgreSQL schema
+
+- Phase: 1 (`P1-T002`, GitHub #15)
+- Status: Added
+- Files: `backend/src/knotic_api/persistence/schema_v1.py`, Alembic configuration and initial revision, PostgreSQL schema tests, integration Compose override, CI persistence job, dependency lock, Phase 1 task status
+- Summary: Added the immutable initial Alembic revision for all 30 documented entities, pgvector 0.8.6 setup, UUID tenant boundaries, composite foreign keys, encrypted-field storage columns, lifecycle and qualification checks, optimistic versions, partial/keyset/HNSW indexes, and enabled-and-forced RLS policies that fail closed without tenant context. API startup remains migration-free. Corrected the stale entity count in the earlier documentation ledger and data-model validator output.
+- Verification: Alembic compiled the revision offline and reported one head; metadata contained exactly 30 tables and all foreign keys had supporting left-prefix indexes. Against the pinned PostgreSQL 17/pgvector container, three schema tests passed: fresh upgrade, 29 forced-RLS tenant tables, pgvector presence, database rejection of an out-of-range score, use of `ix_sales_sessions_tenant_status_updated_id` in `EXPLAIN`, populated downgrade to base, and clean re-upgrade. Ruff formatting/linting and strict mypy passed for the migration/schema code. CI now repeats the integration rehearsal against the same digest-pinned image.
+- Follow-up: Implement `P1-T003` Redis active-state persistence and add its real-service checks to the persistence integration job.
+
+### 2026-08-21 — Implemented atomic Redis active-state persistence
+
+- Phase: 1 (`P1-T003`, GitHub #16)
+- Status: Added
+- Files: `backend/src/knotic_api/persistence/active_state.py`, Redis repository tests, integration Compose override, persistence CI job, backend documentation, Phase 1 task status
+- Summary: Added a versioned, immutable `SalesState` cache envelope carrying tenant/session identity, state version, durable event watermark, update timestamp, and lease fencing token. Keys include environment and a tenant/session Redis Cluster hash tag. Writes use NX creation or a Lua compare-and-set that atomically rejects lost updates and stale fencing tokens. Reads have sliding TTLs, strict schema/identity/size validation, and race-safe compare-and-delete corruption recovery. Connection failures are explicit and never reported as successful writes.
+- Verification: Ruff and strict mypy passed. Five repository tests passed against the pinned Redis 8.8.1 container for exact namespacing, serialization round trip, sliding and actual TTL expiry, simultaneous-writer conflict behavior, stale fencing rejection, duplicate creation, corrupt/schema-invalid cleanup, cache miss, and bounded connection-outage failure. CI repeats the Redis tests alongside PostgreSQL integration tests.
+- Follow-up: Implement `P1-T004` durable repositories and unit-of-work transaction boundaries.
+
+### 2026-08-21 — Implemented durable repositories and unit-of-work boundaries
+
+- Phase: 1 (`P1-T004`, GitHub #17)
+- Status: Added
+- Files: `backend/src/knotic_api/persistence/repositories.py`, `unit_of_work.py`, session-state alignment migration, durable repository integration tests, CI persistence job, backend documentation, Phase 1 task status
+- Summary: Added one explicit short-lived SQLAlchemy transaction boundary that sets trusted tenant and optional actor context before exposing repositories. Added typed session, lead, message, confirmed-requirement, objection, meeting, follow-up, tool call/result, outcome, domain-event, and idempotency operations. Every read/write repeats tenant predicates; domain records must match the transaction tenant; session writes use legal-transition and optimistic-version predicates; confirmed requirement writes lock current state and append history; idempotency uses a unique atomic reservation before business writes. Added a reversible migration aligning durable session statuses with the accepted domain state machine.
+- Verification: Ruff and strict mypy passed. Six real-PostgreSQL migration/repository tests passed for fresh/head migration, populated rollback, injected mid-transaction rollback, tenant-scoped reads, legal optimistic transitions, stale-version rejection, unique idempotency reservation, different-payload replay detection, and exactly one business record. The status-alignment migration upgraded cleanly and its downgrade translates in-flight/failed states to the prior schema vocabulary before restoring its constraints. CI includes these tests in the pinned persistence job.
+- Follow-up: Implement `P1-T005` authenticated, idempotent, rate-limited session lifecycle APIs on these boundaries.
+
+### 2026-08-21 — Implemented authenticated session lifecycle APIs
+
+- Phase: 1 (`P1-T005`, GitHub #18)
+- Status: Added
+- Files: Flask lifecycle API/security composition, server-session/rate-limit/replay security primitives, lifecycle contract tests, configuration and secret inventory, dependency manifests/lock, CI persistence job, backend documentation, Phase 1 task status
+- Summary: Implemented contract-aligned create/read/end session routes with strict JSON and IANA locale/timezone validation, UUID request/correlation propagation, opaque Redis-backed browser authentication, exact-origin and session-bound HMAC CSRF enforcement, fixed-window per-actor rate limits, tenant-hidden reads, optimistic end transitions, durable lifecycle events/outcomes, and safe error envelopes. Mutation idempotency uses HMAC-blinded keys, canonical request hashes, atomic PostgreSQL reservations, different-payload conflict detection, and AES-256-GCM encrypted response replay. Added the required session security secret and purpose-separated derived keys. Aligned the domain outcome vocabulary and reviewed schema snapshots with the already-accepted OpenAPI/requirements contract.
+- Verification: Ruff, strict mypy, domain schema snapshots, and configuration/health tests passed; the full suite passed 38 tests with both real persistence services enabled. Three end-to-end Flask tests covered unauthenticated/origin/CSRF/validation failures, OpenAPI JSON Schema validation of live success/error bodies, create and end replay, encrypted replay-at-rest proof, different-payload conflict, stale version conflict, cross-tenant 404 isolation, exactly one session/outcome, ordered lifecycle events, and rate-limit headers. The digest-based backend image rebuilt successfully and ran healthy as UID 10001 with a read-only root; disabling Gunicorn's optional control socket removed its only attempted home-directory write. The full persistence CI job now runs migration, Redis, repository, and lifecycle suites on pinned service images.
+- Follow-up: Continue with `P1-T006`; OIDC login/session issuance remains required before external production access, per the existing API contract.
 
 ## Maintenance rules
 

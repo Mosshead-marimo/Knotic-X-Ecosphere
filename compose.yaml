@@ -99,6 +99,7 @@ services:
       KNOTIC_MCP_BASE_URL: http://mcp:8090
       KNOTIC_AGORA_APP_ID: local-only-public-agora-app-id-0001
       KNOTIC_AGORA_APP_CERTIFICATE: local-only-public-agora-certificate-0000000001
+      KNOTIC_SESSION_SECURITY_KEY: local-only-public-session-key-00000000000001
     ports: ["127.0.0.1:8080:8080"]
     read_only: true
     tmpfs: [/tmp]

@@ -129,7 +129,7 @@ def test_message_outcome_and_event_business_invariants() -> None:
             outcome_id=outcome_id,
             tenant_id=tenant_id,
             session_id=session_id,
-            outcome=OutcomeType.DEMO_BOOKED,
+            outcome=OutcomeType.ENTERPRISE_DEMO_BOOKED,
             source="SYSTEM",
             assigned_at=NOW,
         )

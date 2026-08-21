@@ -14,6 +14,7 @@ _REQUIRED_SECRETS = {
     "redis_url": "KNOTIC_REDIS_URL",
     "mcp_auth_token": "KNOTIC_MCP_AUTH_TOKEN",
     "agora_app_certificate": "KNOTIC_AGORA_APP_CERTIFICATE",
+    "session_security_key": "KNOTIC_SESSION_SECURITY_KEY",
 }
 _OPTIONAL_SECRETS = {
     "previous_mcp_auth_token": "KNOTIC_MCP_AUTH_TOKEN_PREVIOUS",
@@ -55,6 +56,7 @@ class BackendSettings(CommonSettings):
     mcp_auth_token: SecretStr
     previous_mcp_auth_token: SecretStr | None = None
     agora_app_certificate: SecretStr
+    session_security_key: SecretStr
 
     @field_validator("mcp_base_url")
     @classmethod
@@ -96,6 +98,11 @@ class BackendSettings(CommonSettings):
     @classmethod
     def validate_agora_certificate(cls, value: SecretStr) -> SecretStr:
         return _validate_secret("KNOTIC_AGORA_APP_CERTIFICATE", value, 32)
+
+    @field_validator("session_security_key")
+    @classmethod
+    def validate_session_security_key(cls, value: SecretStr) -> SecretStr:
+        return _validate_secret("KNOTIC_SESSION_SECURITY_KEY", value, 32)
 
     @model_validator(mode="after")
     def validate_managed_environment(self) -> "BackendSettings":

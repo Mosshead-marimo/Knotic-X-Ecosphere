@@ -19,4 +19,4 @@ WORKDIR /workspace
 COPY --from=builder --chown=10001:10001 /workspace/.venv /workspace/.venv
 USER 10001:10001
 EXPOSE 8080
-CMD ["gunicorn", "--bind=0.0.0.0:8080", "--workers=2", "--threads=4", "--timeout=30", "knotic_api.app:create_app()"]
+CMD ["gunicorn", "--bind=0.0.0.0:8080", "--workers=2", "--threads=4", "--timeout=30", "--no-control-socket", "knotic_api.app:create_app()"]

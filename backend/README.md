@@ -8,6 +8,8 @@ Persistence code lives under `knotic_api.persistence`. PostgreSQL is durable aut
 
 All durable application writes run inside `UnitOfWork`, which opens one short PostgreSQL transaction and sets trusted tenant/actor context before exposing typed repositories. Repositories repeat tenant predicates even with forced RLS. External calls are forbidden inside this boundary; reserve idempotency, write business state plus events/outbox work, commit, and only then invoke providers.
 
+The `/api/v1/sessions` create/read/end lifecycle is registered by the Flask factory. Browser access requires an opaque `knotic_session` backed by Redis; mutations additionally require an allowed exact origin, the session-bound CSRF token, and an idempotency key. Rate limits fail closed. Idempotent response bodies are encrypted with AES-256-GCM, and request/correlation identifiers appear in every API response. OIDC routes minting browser sessions are a separate contract implementation; until those routes exist, no production client can self-issue an authenticated cookie.
+
 Settings are defined in `knotic_api.config`; shared provider and redaction primitives live in `packages/config`. See `../docs/CONFIGURATION.md` and the root `.env.example`.
 
 External business integrations must be accessed through the MCP boundary. Follow `../docs/AGENTS.md` and `../docs/COMPONENT_OWNERSHIP.md`.

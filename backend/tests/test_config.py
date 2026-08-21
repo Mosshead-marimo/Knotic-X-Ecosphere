@@ -17,6 +17,7 @@ VALID_SECRETS = {
     "KNOTIC_REDIS_URL": "rediss://:secure-redis-password@redis.internal:6379/0",
     "KNOTIC_MCP_AUTH_TOKEN": "a" * 40,
     "KNOTIC_AGORA_APP_CERTIFICATE": "b" * 32,
+    "KNOTIC_SESSION_SECURITY_KEY": "c" * 32,
 }
 VALID_ENVIRONMENT = {
     "KNOTIC_ENV": "development",

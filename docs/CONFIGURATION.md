@@ -40,6 +40,7 @@ Never reuse staging or production secrets across environments. Each environment 
 | `KNOTIC_MCP_AUTH_TOKEN` | Secret | Backend, MCP | Always |
 | `KNOTIC_MCP_AUTH_TOKEN_PREVIOUS` | Secret | Backend, MCP | Only during rotation |
 | `KNOTIC_AGORA_APP_CERTIFICATE` | Secret | Backend | Always |
+| `KNOTIC_SESSION_SECURITY_KEY` | Secret | Backend | Always |
 
 No server-only variable may use a `NEXT_PUBLIC_` prefix or appear in frontend source, assets, generated bundles, browser logs, or client error payloads.
 
@@ -55,7 +56,7 @@ Tests use `MappingSecretProvider`; application code must not read secrets direct
 2. For MCP authentication, deploy the old token as `KNOTIC_MCP_AUTH_TOKEN_PREVIOUS` and the new token as `KNOTIC_MCP_AUTH_TOKEN` so consumers can overlap safely after authentication behavior is implemented.
 3. Roll MCP, then backend, and verify both versions through redacted authentication metrics. Never print or compare tokens in logs.
 4. Remove the previous token after the maximum request/session lifetime and a confirmed zero-use window.
-5. For database, Redis, and Agora credentials, use provider-supported overlapping credentials or a blue/green rollout; rebuild connection pools after activation.
+5. For database, Redis, Agora, and session-security credentials, use provider-supported overlapping credentials or a blue/green rollout; rebuild connection pools after activation. Rotating the session-security key invalidates browser sessions and outstanding idempotency replays, so use a planned bounded session drain until dual-key decryption is implemented.
 6. Revoke the old credential, record actor/time/reason/provider version, and verify that rollback credentials follow the same expiry policy.
 
 Emergency rotation skips the overlap only when compromise risk exceeds availability risk. The incident owner must document the resulting interruption.
@@ -67,4 +68,3 @@ Emergency rotation skips the overlap only when compromise risk exceeds availabil
 - Structured keys such as tokens, passwords, certificates, authorization, cookies, and connection URLs are recursively redacted.
 - Startup errors report missing variable names and validation rules, never submitted values.
 - Run `npm run scan:frontend-secrets` after every production frontend build.
-

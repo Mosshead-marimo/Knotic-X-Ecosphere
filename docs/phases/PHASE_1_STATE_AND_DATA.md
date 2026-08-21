@@ -39,7 +39,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: Partial writes roll back; duplicate requests do not create duplicate business records.
 - Verify: Integration tests with real PostgreSQL and failure injection.
 
-### [ ] P1-T005 — Implement session lifecycle APIs
+### [x] P1-T005 — Implement session lifecycle APIs
 
 - Dependencies: P0-T005, P1-T003, P1-T004.
 - Implement: Authenticated create/read/end session endpoints, request validation, error mapping, idempotency keys, rate limits, and correlation IDs.

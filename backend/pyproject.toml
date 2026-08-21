@@ -4,6 +4,7 @@ version = "0.0.0"
 description = "Flask API and LangGraph orchestration service for Knotic Sales Agent"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "alembic==1.19.0",
     "flask==3.1.3",
     "gunicorn==26.0.0",
     "knotic-config==0.0.0",

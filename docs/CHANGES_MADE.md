@@ -380,7 +380,7 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Phase: 0 (`P0-T006`)
 - Status: Documented
 - Files: `docs/DATA_MODEL.md`, `scripts/validate-data-model.mjs`, root scripts, task status, and repository README
-- Summary: Defined UUIDv7 and tenant-safe identifier conventions, 28 PostgreSQL entities with indexed composite foreign keys and forced RLS, exact Redis active-state keys/TTLs/rebuild behavior, versioned pgvector knowledge ownership, state/event authority, optimistic concurrency, outbox/inbox and idempotency patterns, provider-confirmation invariants, application envelope encryption, retention/erasure, and expand/migrate/contract rules.
+- Summary: Defined UUIDv7 and tenant-safe identifier conventions, 30 PostgreSQL entities with indexed composite foreign keys and forced RLS, exact Redis active-state keys/TTLs/rebuild behavior, versioned pgvector knowledge ownership, state/event authority, optimistic concurrency, outbox/inbox and idempotency patterns, provider-confirmation invariants, application envelope encryption, retention/erasure, and expand/migrate/contract rules.
 - Verification: Passed the executable data-model validator for all entities, seven Redis key contracts, every structured SalesState field, all eight API event lifecycles, production controls, and explicit FR-04, FR-05, FR-11, FR-12, FR-13, and FR-14 traceability. Re-ran the API contract validator and `git diff --check` successfully.
 - Follow-up: Implement physical migrations with their owning feature tasks and complete `P0-T007` MCP contracts.
 
@@ -428,6 +428,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Added strict immutable version-1 models for SalesState, customers, requirements, objections, qualification, messages, tool calls, outcomes, and domain events. Added RFC 9562 UUIDv7 generation/validation, bounded enums and scores, typed requirement values, tenant/session ownership checks, provider-confirmed booking invariants, and deterministic session-transition rules.
 - Verification: Ruff formatting/linting and strict mypy passed; five unit tests passed for invalid identifiers/enums/scores/transitions, typed business invariants, JSON round trips, and nine reviewed schema snapshots; whitespace and repository secret scans passed.
 - Follow-up: Implement `P1-T002` physical PostgreSQL migrations from these types.
+
+### 2026-08-21 — Implemented tenant-isolated PostgreSQL schema
+
+- Phase: 1 (`P1-T002`, GitHub #15)
+- Status: Added
+- Files: `backend/src/knotic_api/persistence/schema_v1.py`, Alembic configuration and initial revision, PostgreSQL schema tests, integration Compose override, CI persistence job, dependency lock, Phase 1 task status
+- Summary: Added the immutable initial Alembic revision for all 30 documented entities, pgvector 0.8.6 setup, UUID tenant boundaries, composite foreign keys, encrypted-field storage columns, lifecycle and qualification checks, optimistic versions, partial/keyset/HNSW indexes, and enabled-and-forced RLS policies that fail closed without tenant context. API startup remains migration-free. Corrected the stale entity count in the earlier documentation ledger and data-model validator output.
+- Verification: Alembic compiled the revision offline and reported one head; metadata contained exactly 30 tables and all foreign keys had supporting left-prefix indexes. Against the pinned PostgreSQL 17/pgvector container, three schema tests passed: fresh upgrade, 29 forced-RLS tenant tables, pgvector presence, database rejection of an out-of-range score, use of `ix_sales_sessions_tenant_status_updated_id` in `EXPLAIN`, populated downgrade to base, and clean re-upgrade. Ruff formatting/linting and strict mypy passed for the migration/schema code. CI now repeats the integration rehearsal against the same digest-pinned image.
+- Follow-up: Implement `P1-T003` Redis active-state persistence and add its real-service checks to the persistence integration job.
 
 ## Maintenance rules
 

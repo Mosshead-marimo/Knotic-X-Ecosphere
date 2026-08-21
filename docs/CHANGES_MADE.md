@@ -438,6 +438,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Alembic compiled the revision offline and reported one head; metadata contained exactly 30 tables and all foreign keys had supporting left-prefix indexes. Against the pinned PostgreSQL 17/pgvector container, three schema tests passed: fresh upgrade, 29 forced-RLS tenant tables, pgvector presence, database rejection of an out-of-range score, use of `ix_sales_sessions_tenant_status_updated_id` in `EXPLAIN`, populated downgrade to base, and clean re-upgrade. Ruff formatting/linting and strict mypy passed for the migration/schema code. CI now repeats the integration rehearsal against the same digest-pinned image.
 - Follow-up: Implement `P1-T003` Redis active-state persistence and add its real-service checks to the persistence integration job.
 
+### 2026-08-21 — Implemented atomic Redis active-state persistence
+
+- Phase: 1 (`P1-T003`, GitHub #16)
+- Status: Added
+- Files: `backend/src/knotic_api/persistence/active_state.py`, Redis repository tests, integration Compose override, persistence CI job, backend documentation, Phase 1 task status
+- Summary: Added a versioned, immutable `SalesState` cache envelope carrying tenant/session identity, state version, durable event watermark, update timestamp, and lease fencing token. Keys include environment and a tenant/session Redis Cluster hash tag. Writes use NX creation or a Lua compare-and-set that atomically rejects lost updates and stale fencing tokens. Reads have sliding TTLs, strict schema/identity/size validation, and race-safe compare-and-delete corruption recovery. Connection failures are explicit and never reported as successful writes.
+- Verification: Ruff and strict mypy passed. Five repository tests passed against the pinned Redis 8.8.1 container for exact namespacing, serialization round trip, sliding and actual TTL expiry, simultaneous-writer conflict behavior, stale fencing rejection, duplicate creation, corrupt/schema-invalid cleanup, cache miss, and bounded connection-outage failure. CI repeats the Redis tests alongside PostgreSQL integration tests.
+- Follow-up: Implement `P1-T004` durable repositories and unit-of-work transaction boundaries.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

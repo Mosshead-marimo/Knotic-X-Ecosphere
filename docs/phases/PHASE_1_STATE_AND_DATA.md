@@ -25,7 +25,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: Required entities are durable; invariants are enforced at the database boundary; migrations work on empty and populated databases.
 - Verify: Migration up/down rehearsal, constraint tests, query-plan review.
 
-### [ ] P1-T003 — Implement Redis active-state repository
+### [x] P1-T003 — Implement Redis active-state repository
 
 - Dependencies: P1-T001.
 - Implement: Namespaced keys, TTL, optimistic concurrency/version checks, atomic updates, serialization versioning, and connection-failure behavior.

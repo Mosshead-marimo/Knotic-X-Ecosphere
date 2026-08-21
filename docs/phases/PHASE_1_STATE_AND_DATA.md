@@ -11,7 +11,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 
 ## Tasks
 
-### [ ] P1-T001 — Implement typed domain models
+### [x] P1-T001 — Implement typed domain models
 
 - Dependencies: P0-T006.
 - Implement: Typed `SalesState`, customer, requirement, objection, qualification, message, tool-call, outcome, and event models with validation and schema versioning.
@@ -84,4 +84,3 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 ## Phase gate
 
 All tasks pass against real Redis and PostgreSQL; restart and cache-loss recovery succeed; isolation and lifecycle controls are verified; state latency meets its approved service-level target.
-

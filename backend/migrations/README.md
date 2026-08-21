@@ -20,5 +20,6 @@ For host-run integration tests, opt in to the loopback-only database port:
 ```console
 docker compose -f compose.yaml -f infra/docker/compose.integration.yaml up -d postgres
 $env:KNOTIC_TEST_DATABASE_URL = "postgresql+psycopg://knotic@127.0.0.1:5433/knotic"
-uv run pytest -m integration backend/tests/test_postgres_schema.py
+$env:KNOTIC_TEST_REDIS_URL = "redis://127.0.0.1:6380/15"
+uv run pytest -m integration backend/tests/test_postgres_schema.py backend/tests/test_active_state_repository.py
 ```

@@ -447,6 +447,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff and strict mypy passed. Five repository tests passed against the pinned Redis 8.8.1 container for exact namespacing, serialization round trip, sliding and actual TTL expiry, simultaneous-writer conflict behavior, stale fencing rejection, duplicate creation, corrupt/schema-invalid cleanup, cache miss, and bounded connection-outage failure. CI repeats the Redis tests alongside PostgreSQL integration tests.
 - Follow-up: Implement `P1-T004` durable repositories and unit-of-work transaction boundaries.
 
+### 2026-08-21 — Implemented durable repositories and unit-of-work boundaries
+
+- Phase: 1 (`P1-T004`, GitHub #17)
+- Status: Added
+- Files: `backend/src/knotic_api/persistence/repositories.py`, `unit_of_work.py`, session-state alignment migration, durable repository integration tests, CI persistence job, backend documentation, Phase 1 task status
+- Summary: Added one explicit short-lived SQLAlchemy transaction boundary that sets trusted tenant and optional actor context before exposing repositories. Added typed session, lead, message, confirmed-requirement, objection, meeting, follow-up, tool call/result, outcome, domain-event, and idempotency operations. Every read/write repeats tenant predicates; domain records must match the transaction tenant; session writes use legal-transition and optimistic-version predicates; confirmed requirement writes lock current state and append history; idempotency uses a unique atomic reservation before business writes. Added a reversible migration aligning durable session statuses with the accepted domain state machine.
+- Verification: Ruff and strict mypy passed. Six real-PostgreSQL migration/repository tests passed for fresh/head migration, populated rollback, injected mid-transaction rollback, tenant-scoped reads, legal optimistic transitions, stale-version rejection, unique idempotency reservation, different-payload replay detection, and exactly one business record. The status-alignment migration upgraded cleanly and its downgrade translates in-flight/failed states to the prior schema vocabulary before restoring its constraints. CI includes these tests in the pinned persistence job.
+- Follow-up: Implement `P1-T005` authenticated, idempotent, rate-limited session lifecycle APIs on these boundaries.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

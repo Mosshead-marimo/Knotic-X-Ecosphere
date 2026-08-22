@@ -12,6 +12,7 @@ from .identifiers import UUID7
 from .types import (
     BuyingStage,
     EventType,
+    MemoryField,
     MessageSource,
     NextBestAction,
     ObjectionCategory,
@@ -44,6 +45,51 @@ class Customer(DomainModel):
     role: ShortText | None = None
     email: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")] | None = None
     phone: Annotated[str, StringConstraints(strip_whitespace=True, min_length=7, max_length=32)] | None = None
+
+
+class MemoryFact(DomainModel):
+    """One current structured-memory value with auditable provenance."""
+
+    fact_id: UUID7
+    tenant_id: UUID7
+    session_id: UUID7
+    field: MemoryField
+    value: int | Decimal | ShortText | tuple[ShortText, ...]
+    currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] | None = None
+    confirmed: bool
+    confidence: float = Field(ge=0, le=1)
+    source_turn_id: UUID7
+    actor_type: Literal["CUSTOMER", "ASSISTANT", "HUMAN_AGENT", "SYSTEM", "WORKLOAD"]
+    captured_at: AwareDatetime
+    version: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def validate_typed_value(self) -> MemoryFact:
+        list_fields = {
+            MemoryField.USE_CASES,
+            MemoryField.INTEGRATIONS,
+            MemoryField.COMPETITORS,
+        }
+        if self.field == MemoryField.USERS and (type(self.value) is not int or self.value <= 0):
+            raise ValueError("users memory must be a positive integer")
+        if self.field == MemoryField.BUDGET:
+            if not isinstance(self.value, Decimal) or isinstance(self.value, int) or self.value < 0:
+                raise ValueError("budget memory must be a non-negative decimal")
+            if self.currency is None:
+                raise ValueError("budget memory requires an ISO 4217 currency")
+        elif self.currency is not None:
+            raise ValueError("currency is valid only for budget memory")
+        if self.field in list_fields:
+            if not isinstance(self.value, tuple) or not self.value:
+                raise ValueError(f"{self.field.value} memory must be a non-empty list")
+            normalized = [item.casefold() for item in self.value]
+            if len(normalized) != len(set(normalized)):
+                raise ValueError(f"{self.field.value} memory must not contain duplicates")
+        elif self.field != MemoryField.USERS and self.field != MemoryField.BUDGET and not isinstance(self.value, str):
+            raise ValueError(f"{self.field.value} memory must be text")
+        if self.field == MemoryField.NEXT_ACTION:
+            NextBestAction(str(self.value))
+        return self
 
 
 class Requirement(DomainModel):
@@ -233,6 +279,7 @@ class SalesState(DomainModel):
     requirements: tuple[Requirement, ...] = ()
     objections: tuple[Objection, ...] = ()
     competitors: tuple[ShortText, ...] = ()
+    memory_facts: tuple[MemoryFact, ...] = ()
     outcome: Outcome | None = None
     created_at: AwareDatetime
     updated_at: AwareDatetime
@@ -255,6 +302,11 @@ class SalesState(DomainModel):
             raise ValueError("SalesState may contain only one current requirement per field")
         if len(self.competitors) != len(set(self.competitors)):
             raise ValueError("competitors must be unique")
+        memory_fields = [fact.field for fact in self.memory_facts]
+        if len(memory_fields) != len(set(memory_fields)):
+            raise ValueError("SalesState may contain only one current memory fact per field")
+        if any(fact.tenant_id != self.tenant_id or fact.session_id != self.session_id for fact in self.memory_facts):
+            raise ValueError("memory facts must belong to the session")
         return self
 
     def transition_to(self, target: SessionStatus, *, at: datetime) -> SalesState:

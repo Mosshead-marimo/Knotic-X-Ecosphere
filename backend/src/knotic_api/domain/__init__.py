@@ -4,6 +4,7 @@ from .identifiers import UUID7, new_uuid7
 from .models import (
     Customer,
     DomainEvent,
+    MemoryFact,
     Message,
     Objection,
     Outcome,
@@ -15,6 +16,7 @@ from .models import (
 from .types import (
     BuyingStage,
     EventType,
+    MemoryField,
     MessageSource,
     NextBestAction,
     ObjectionCategory,
@@ -32,6 +34,8 @@ __all__ = [
     "Customer",
     "DomainEvent",
     "EventType",
+    "MemoryFact",
+    "MemoryField",
     "Message",
     "MessageSource",
     "NextBestAction",

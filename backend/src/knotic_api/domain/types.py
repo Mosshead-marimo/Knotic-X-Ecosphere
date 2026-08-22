@@ -53,6 +53,12 @@ class MemoryField(StrEnum):
     NEXT_ACTION = "next_action"
 
 
+class RequirementUpdateSource(StrEnum):
+    CUSTOMER_CONFIRMATION = "CUSTOMER_CONFIRMATION"
+    HUMAN_CORRECTION = "HUMAN_CORRECTION"
+    WORKFLOW_CONFIRMATION = "WORKFLOW_CONFIRMATION"
+
+
 class ObjectionCategory(StrEnum):
     PRICE = "PRICE"
     TIMING = "TIMING"

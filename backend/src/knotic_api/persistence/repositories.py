@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import sqlalchemy as sa
@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.engine import Connection, RowMapping
 
 from knotic_api.domain.models import DomainEvent, Message, Objection, Outcome, Requirement, ToolCall
-from knotic_api.domain.types import SessionStatus
+from knotic_api.domain.types import EventType, RequirementUpdateSource, SessionStatus
 
 from . import schema_v1 as schema
 
@@ -103,6 +103,26 @@ class ToolResultCreate:
     result_ciphertext: bytes
     confirmation_status: str
     provider_timestamp: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RequirementRevisionCommand:
+    requirement: Requirement
+    event_id: UUID
+    correlation_id: UUID
+    actor_type: Literal["CUSTOMER", "ASSISTANT", "HUMAN_AGENT", "SYSTEM", "WORKLOAD"]
+    actor_id: UUID
+    source: RequirementUpdateSource
+
+
+@dataclass(frozen=True, slots=True)
+class RequirementRevision:
+    requirement_id: UUID
+    event_id: UUID
+    previous_value: Any
+    current_value: Any
+    version: int
+    changed: bool
 
 
 class TenantRepository:
@@ -289,8 +309,56 @@ class MessageRepository(TenantRepository):
 
 
 class RequirementRepository(TenantRepository):
-    def replace_confirmed(self, requirement: Requirement, *, event_id: UUID) -> UUID:
+    def revise_confirmed(self, command: RequirementRevisionCommand) -> RequirementRevision:
+        requirement = command.requirement
         self._require_tenant(requirement.tenant_id)
+        for name, identifier in {
+            "event_id": command.event_id,
+            "correlation_id": command.correlation_id,
+            "actor_id": command.actor_id,
+        }.items():
+            if identifier.version != 7:
+                raise ValueError(f"{name} must be UUIDv7")
+        if command.actor_type not in {"CUSTOMER", "ASSISTANT", "HUMAN_AGENT", "SYSTEM", "WORKLOAD"}:
+            raise ValueError("invalid requirement revision actor type")
+        if not requirement.confirmed:
+            raise ValueError("only confirmed requirements may become durable current values")
+        self.connection.execute(
+            sa.select(schema.sales_sessions.c.id)
+            .where(
+                schema.sales_sessions.c.tenant_id == self.tenant_id,
+                schema.sales_sessions.c.id == requirement.session_id,
+            )
+            .with_for_update()
+        ).scalar_one()
+        new_value = requirement.model_dump(mode="json")["value"]
+        repeated = (
+            self.connection.execute(
+                sa.select(schema.requirement_changes)
+                .where(
+                    schema.requirement_changes.c.tenant_id == self.tenant_id,
+                    schema.requirement_changes.c.session_id == requirement.session_id,
+                    schema.requirement_changes.c.field == requirement.field.value,
+                    schema.requirement_changes.c.source_turn_id == requirement.source_turn_id,
+                )
+                .order_by(schema.requirement_changes.c.changed_at.desc(), schema.requirement_changes.c.id.desc())
+                .limit(1)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if repeated is not None:
+            if repeated["new_value"] != new_value:
+                raise ValueError("one source turn cannot confirm conflicting requirement values")
+            current = self._current_row(requirement)
+            return RequirementRevision(
+                requirement_id=repeated["requirement_id"],
+                event_id=repeated["event_id"],
+                previous_value=repeated["old_value"],
+                current_value=repeated["new_value"],
+                version=current["version"],
+                changed=False,
+            )
         existing = (
             self.connection.execute(
                 sa.select(schema.requirements_current)
@@ -306,6 +374,8 @@ class RequirementRepository(TenantRepository):
         )
         values = self._typed_values(requirement)
         if existing is None:
+            if requirement.version != 1:
+                raise ValueError("the first confirmed requirement version must be 1")
             self.connection.execute(
                 schema.requirements_current.insert().values(
                     id=requirement.requirement_id,
@@ -320,8 +390,8 @@ class RequirementRepository(TenantRepository):
             )
             old_value: Any = None
         else:
-            if existing["version"] >= requirement.version:
-                raise ValueError("requirement version must increase")
+            if requirement.version != existing["version"] + 1:
+                raise ValueError("requirement version must increase exactly once")
             old_value = self._current_value(existing)
             self.connection.execute(
                 schema.requirements_current.update()
@@ -338,20 +408,65 @@ class RequirementRepository(TenantRepository):
             )
         self.connection.execute(
             schema.requirement_changes.insert().values(
-                id=event_id,
+                id=command.event_id,
                 tenant_id=self.tenant_id,
                 session_id=requirement.session_id,
                 requirement_id=requirement.requirement_id if existing is None else existing["id"],
                 field=requirement.field.value,
                 old_value=old_value,
-                new_value=requirement.model_dump(mode="json")["value"],
+                new_value=new_value,
                 confirmed=True,
                 source_turn_id=requirement.source_turn_id,
-                event_id=event_id,
+                event_id=command.event_id,
+                actor_type=command.actor_type,
+                actor_id=command.actor_id,
+                source=command.source.value,
                 changed_at=requirement.updated_at,
             )
         )
-        return requirement.requirement_id if existing is None else existing["id"]
+        requirement_id = requirement.requirement_id if existing is None else existing["id"]
+        event = DomainEvent(
+            event_id=command.event_id,
+            event_type=EventType.REQUIREMENT_UPDATED,
+            occurred_at=requirement.updated_at,
+            tenant_id=self.tenant_id,
+            session_id=requirement.session_id,
+            sequence=EventRepository(self.connection, self.tenant_id).next_sequence(requirement.session_id),
+            correlation_id=command.correlation_id,
+            causation_id=requirement.source_turn_id,
+            actor_type=command.actor_type,
+            actor_id=command.actor_id,
+            payload={
+                "field": requirement.field.value,
+                "old_value": old_value,
+                "new_value": new_value,
+                "confirmed": True,
+                "source": command.source.value,
+                "source_turn_id": str(requirement.source_turn_id),
+            },
+        )
+        EventRepository(self.connection, self.tenant_id).append(event)
+        return RequirementRevision(
+            requirement_id=requirement_id,
+            event_id=command.event_id,
+            previous_value=old_value,
+            current_value=new_value,
+            version=requirement.version,
+            changed=True,
+        )
+
+    def _current_row(self, requirement: Requirement) -> RowMapping:
+        return (
+            self.connection.execute(
+                sa.select(schema.requirements_current).where(
+                    schema.requirements_current.c.tenant_id == self.tenant_id,
+                    schema.requirements_current.c.session_id == requirement.session_id,
+                    schema.requirements_current.c.field == requirement.field.value,
+                )
+            )
+            .mappings()
+            .one()
+        )
 
     @staticmethod
     def _typed_values(requirement: Requirement) -> dict[str, Any]:
@@ -537,6 +652,7 @@ class EventRepository(TenantRepository):
                 correlation_id=event.correlation_id,
                 causation_id=event.causation_id,
                 actor_id=event.actor_id,
+                actor_type=event.actor_type,
                 payload=event.payload,
                 payload_schema_version=event.schema_version,
             )

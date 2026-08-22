@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -11,13 +12,15 @@ from alembic.config import Config
 from sqlalchemy.engine import Engine
 
 from knotic_api.domain.identifiers import new_uuid7
-from knotic_api.domain.types import SessionStatus
+from knotic_api.domain.models import Requirement
+from knotic_api.domain.types import RequirementField, RequirementUpdateSource, SessionStatus
 from knotic_api.persistence.repositories import (
     FollowupRepository,
     IdempotencyReservation,
     LeadCreate,
     MeetingCreate,
     MeetingRepository,
+    RequirementRevisionCommand,
     SessionCreate,
 )
 from knotic_api.persistence.unit_of_work import UnitOfWork
@@ -163,4 +166,196 @@ def test_idempotency_reservation_prevents_duplicate_business_record(repository_e
                 {"tenant_id": tenant_id, "id": meeting_id},
             )
             == 1
+        )
+
+
+def _revision_command(
+    requirement: Requirement,
+    *,
+    actor_id: object,
+    event_id: object,
+    correlation_id: object,
+) -> RequirementRevisionCommand:
+    return RequirementRevisionCommand(
+        requirement=requirement,
+        event_id=event_id,
+        correlation_id=correlation_id,
+        actor_type="CUSTOMER",
+        actor_id=actor_id,
+        source=RequirementUpdateSource.CUSTOMER_CONFIRMATION,
+    )
+
+
+@pytest.mark.integration
+def test_requirement_revision_preserves_fr05_history_event_and_replay(repository_engine: Engine) -> None:
+    tenant_id = new_uuid7()
+    actor_id = new_uuid7()
+    session_id = new_uuid7()
+    requirement_id = new_uuid7()
+    turn_50 = new_uuid7()
+    turn_250 = new_uuid7()
+    event_50 = new_uuid7()
+    event_250 = new_uuid7()
+    correlation_id = new_uuid7()
+    _create_tenant(repository_engine, tenant_id, f"tenant-{tenant_id}")
+    with UnitOfWork(repository_engine, tenant_id=tenant_id) as work:
+        work.sessions.create(SessionCreate(session_id=session_id, locale="en-US", timezone="UTC"))
+
+    now = datetime.now(UTC)
+    users_50 = Requirement(
+        requirement_id=requirement_id,
+        tenant_id=tenant_id,
+        session_id=session_id,
+        field=RequirementField.USERS,
+        value=50,
+        confirmed=True,
+        confidence=1,
+        source_turn_id=turn_50,
+        updated_at=now,
+        version=1,
+    )
+    users_250 = users_50.model_copy(
+        update={"value": 250, "source_turn_id": turn_250, "updated_at": now + timedelta(seconds=1), "version": 2}
+    )
+    with UnitOfWork(repository_engine, tenant_id=tenant_id, actor_id=actor_id) as work:
+        first = work.requirements.revise_confirmed(
+            _revision_command(users_50, actor_id=actor_id, event_id=event_50, correlation_id=correlation_id)
+        )
+    with UnitOfWork(repository_engine, tenant_id=tenant_id, actor_id=actor_id) as work:
+        corrected = work.requirements.revise_confirmed(
+            _revision_command(users_250, actor_id=actor_id, event_id=event_250, correlation_id=correlation_id)
+        )
+    with UnitOfWork(repository_engine, tenant_id=tenant_id, actor_id=actor_id) as work:
+        replay = work.requirements.revise_confirmed(
+            _revision_command(users_250, actor_id=actor_id, event_id=new_uuid7(), correlation_id=correlation_id)
+        )
+
+    assert first.previous_value is None and first.current_value == 50
+    assert corrected.previous_value == 50 and corrected.current_value == 250
+    assert replay.event_id == event_250 and not replay.changed
+    with repository_engine.connect() as connection:
+        current = (
+            connection.execute(
+                sa.text(
+                    "select value_integer,version from requirements_current "
+                    "where tenant_id=:tenant_id and session_id=:session_id and field='users'"
+                ),
+                {"tenant_id": tenant_id, "session_id": session_id},
+            )
+            .mappings()
+            .one()
+        )
+        changes = (
+            connection.execute(
+                sa.text(
+                    "select old_value,new_value,actor_type,actor_id,source,event_id from requirement_changes "
+                    "where tenant_id=:tenant_id and session_id=:session_id order by changed_at,id"
+                ),
+                {"tenant_id": tenant_id, "session_id": session_id},
+            )
+            .mappings()
+            .all()
+        )
+        events = (
+            connection.execute(
+                sa.text(
+                    "select sequence,event_type,actor_type,actor_id,payload from domain_events "
+                    "where tenant_id=:tenant_id and session_id=:session_id order by sequence"
+                ),
+                {"tenant_id": tenant_id, "session_id": session_id},
+            )
+            .mappings()
+            .all()
+        )
+
+    assert current == {"value_integer": 250, "version": 2}
+    assert [(row["old_value"], row["new_value"]) for row in changes] == [(None, 50), (50, 250)]
+    assert all(row["actor_type"] == "CUSTOMER" and row["actor_id"] == actor_id for row in changes)
+    assert all(row["source"] == "CUSTOMER_CONFIRMATION" for row in changes)
+    assert [row["event_id"] for row in changes] == [event_50, event_250]
+    assert [row["sequence"] for row in events] == [1, 2]
+    assert all(row["event_type"] == "requirement.updated" for row in events)
+    assert events[1]["payload"]["old_value"] == 50 and events[1]["payload"]["new_value"] == 250
+
+    conflict = users_250.model_copy(update={"value": 300, "version": 3})
+    with pytest.raises(ValueError, match="source turn cannot confirm conflicting"):
+        with UnitOfWork(repository_engine, tenant_id=tenant_id, actor_id=actor_id) as work:
+            work.requirements.revise_confirmed(
+                _revision_command(conflict, actor_id=actor_id, event_id=new_uuid7(), correlation_id=correlation_id)
+            )
+
+
+@pytest.mark.integration
+def test_concurrent_requirement_corrections_allow_exactly_one_winner(repository_engine: Engine) -> None:
+    tenant_id = new_uuid7()
+    actor_id = new_uuid7()
+    session_id = new_uuid7()
+    requirement_id = new_uuid7()
+    correlation_id = new_uuid7()
+    _create_tenant(repository_engine, tenant_id, f"tenant-{tenant_id}")
+    with UnitOfWork(repository_engine, tenant_id=tenant_id) as work:
+        work.sessions.create(SessionCreate(session_id=session_id, locale="en-US", timezone="UTC"))
+    now = datetime.now(UTC)
+    original = Requirement(
+        requirement_id=requirement_id,
+        tenant_id=tenant_id,
+        session_id=session_id,
+        field=RequirementField.USERS,
+        value=50,
+        confirmed=True,
+        confidence=1,
+        source_turn_id=new_uuid7(),
+        updated_at=now,
+        version=1,
+    )
+    with UnitOfWork(repository_engine, tenant_id=tenant_id, actor_id=actor_id) as work:
+        work.requirements.revise_confirmed(
+            _revision_command(original, actor_id=actor_id, event_id=new_uuid7(), correlation_id=correlation_id)
+        )
+    proposals = [
+        original.model_copy(
+            update={
+                "value": value,
+                "source_turn_id": new_uuid7(),
+                "updated_at": now + timedelta(seconds=1),
+                "version": 2,
+            }
+        )
+        for value in (250, 300)
+    ]
+
+    def revise(requirement: Requirement) -> str:
+        try:
+            with UnitOfWork(repository_engine, tenant_id=tenant_id, actor_id=actor_id) as work:
+                work.requirements.revise_confirmed(
+                    _revision_command(
+                        requirement,
+                        actor_id=actor_id,
+                        event_id=new_uuid7(),
+                        correlation_id=correlation_id,
+                    )
+                )
+            return "saved"
+        except ValueError:
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(revise, proposals))
+    assert sorted(outcomes) == ["conflict", "saved"]
+    with repository_engine.connect() as connection:
+        assert (
+            connection.scalar(
+                sa.text(
+                    "select count(*) from requirement_changes where tenant_id=:tenant_id and session_id=:session_id"
+                ),
+                {"tenant_id": tenant_id, "session_id": session_id},
+            )
+            == 2
+        )
+        assert (
+            connection.scalar(
+                sa.text("select count(*) from domain_events where tenant_id=:tenant_id and session_id=:session_id"),
+                {"tenant_id": tenant_id, "session_id": session_id},
+            )
+            == 2
         )

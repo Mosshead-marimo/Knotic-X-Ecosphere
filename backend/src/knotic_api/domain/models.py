@@ -270,6 +270,7 @@ class SalesState(DomainModel):
     status: SessionStatus
     version: int = Field(ge=1)
     current_intent: ShortText | None = None
+    current_topic: ShortText | None = None
     buying_stage: BuyingStage = BuyingStage.NURTURE
     qualification: Qualification | None = None
     next_best_action: NextBestAction = NextBestAction.ASK_DISCOVERY

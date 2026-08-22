@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -154,3 +155,24 @@ def test_duplicate_create_and_redis_outage_fail_safely() -> None:
     )
     with pytest.raises(ActiveStateUnavailable):
         unavailable.load(state.tenant_id, state.session_id)
+
+
+@pytest.mark.integration
+def test_legacy_envelope_is_atomically_migrated_in_place() -> None:
+    client, repository = _integration_repository()
+    state = _state()
+    current = repository.create(state, event_watermark=7, fencing_token=11)
+    legacy = current.model_dump(mode="json")
+    legacy["schema_version"] = 0
+    legacy.pop("event_watermark")
+    legacy.pop("fencing_token")
+    client.set(repository.key(state.tenant_id, state.session_id), json.dumps(legacy).encode(), ex=60)
+
+    loaded = repository.load(state.tenant_id, state.session_id)
+
+    assert loaded.status == CacheReadStatus.HIT and loaded.migrated
+    assert loaded.envelope is not None
+    assert loaded.envelope.schema_version == 1
+    assert loaded.envelope.event_watermark == 0
+    stored = json.loads(client.get(repository.key(state.tenant_id, state.session_id)))
+    assert stored["schema_version"] == 1

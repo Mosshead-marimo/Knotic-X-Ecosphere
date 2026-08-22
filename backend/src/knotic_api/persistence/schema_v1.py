@@ -147,6 +147,9 @@ sales_sessions = sa.Table(
     sa.Column("summary_ciphertext", BYTEA),
     sa.Column("latest_request_ciphertext", BYTEA),
     sa.Column("outcome", sa.Text),
+    sa.Column("checkpoint_event_sequence", sa.BigInteger, nullable=False, server_default="0"),
+    sa.Column("projection_schema_version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("checkpointed_at", sa.DateTime(timezone=True)),
     sa.Column("started_at", sa.DateTime(timezone=True), nullable=False, server_default=utc_now),
     sa.Column("ended_at", sa.DateTime(timezone=True)),
     *timestamps(),
@@ -155,6 +158,8 @@ sales_sessions = sa.Table(
     sa.ForeignKeyConstraint(["tenant_id", "lead_id"], ["leads.tenant_id", "leads.id"]),
     sa.CheckConstraint("status in ('CREATED','ACTIVE','ENDED','ABANDONED')", name="valid_status"),
     sa.CheckConstraint("qualification_score between 0 and 100", name="valid_qualification_score"),
+    sa.CheckConstraint("checkpoint_event_sequence >= 0", name="valid_checkpoint_event_sequence"),
+    sa.CheckConstraint("projection_schema_version >= 1", name="valid_projection_schema_version"),
     sa.CheckConstraint("(status in ('ENDED','ABANDONED')) = (ended_at is not null)", name="terminal_has_end"),
 )
 sa.Index(
@@ -235,12 +240,14 @@ requirements_current = session_table(
     sa.Column("currency", sa.String(3)),
     sa.Column("confirmed_at", sa.DateTime(timezone=True)),
     sa.Column("source_turn_id", uuid, nullable=False),
+    sa.Column("confidence", sa.Numeric(4, 3), nullable=False, server_default="1"),
     *timestamps(),
     sa.UniqueConstraint("tenant_id", "session_id", "field"),
     sa.CheckConstraint(
         "num_nonnulls(value_integer,value_text,value_text_array,value_numeric) = 1", name="exactly_one_value"
     ),
     sa.CheckConstraint("currency is null or value_numeric is not null", name="currency_requires_numeric"),
+    sa.CheckConstraint("confidence between 0 and 1", name="valid_confidence"),
 )
 
 requirement_changes = session_table(

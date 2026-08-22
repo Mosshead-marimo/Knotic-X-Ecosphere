@@ -60,7 +60,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: A correction replaces the active value while preserving old/new values and order for audit.
 - Verify: FR-05 example plus concurrent and repeated-update tests.
 
-### [ ] P1-T008 — Implement state hydration and recovery
+### [x] P1-T008 — Implement state hydration and recovery
 
 - Dependencies: P1-T003, P1-T004, P1-T007.
 - Implement: Redis-first loading with durable reconstruction, checkpointing, cache warming, version migration, and recovery after process/cache loss.

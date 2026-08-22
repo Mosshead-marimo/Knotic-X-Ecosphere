@@ -465,6 +465,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff, strict mypy, domain schema snapshots, and configuration/health tests passed; the full suite passed 38 tests with both real persistence services enabled. Three end-to-end Flask tests covered unauthenticated/origin/CSRF/validation failures, OpenAPI JSON Schema validation of live success/error bodies, create and end replay, encrypted replay-at-rest proof, different-payload conflict, stale version conflict, cross-tenant 404 isolation, exactly one session/outcome, ordered lifecycle events, and rate-limit headers. The digest-based backend image rebuilt successfully and ran healthy as UID 10001 with a read-only root; disabling Gunicorn's optional control socket removed its only attempted home-directory write. The full persistence CI job now runs migration, Redis, repository, and lifecycle suites on pinned service images.
 - Follow-up: Continue with `P1-T006`; OIDC login/session issuance remains required before external production access, per the existing API contract.
 
+### 2026-08-22 — Implemented structured memory updates
+
+- Phase: 1 (`P1-T006`, GitHub #26)
+- Status: Added
+- Files: structured-memory domain models and merge rules, domain exports/schema snapshot, table-driven memory tests, backend documentation, Phase 1 task status
+- Summary: Added immutable structured-memory facts with tenant/session identity, confirmation, confidence, actor, source-turn, capture-time, and version provenance. Added deterministic pure merge rules for customer name, company, role, users, use cases, integrations, budget, timeline, competitors, current topic, next action, and objections. Confirmed values resist tentative extraction, exact replays are idempotent, stale/cross-session/same-source conflicts fail closed, and accepted facts update typed `SalesState` projections without treating transcript text as memory.
+- Verification: Ruff formatting and linting passed; strict mypy passed for all 25 source modules; 19 focused domain/memory tests and the complete 41-test non-integration suite passed. Coverage includes every required field, provenance retention, confirmation precedence, replay, conflict, tenant/session ownership, typed requirement projection, objection revision, serialization, transition, and the reviewed schema snapshot. API, data-model, MCP, operations-document, repository-secret, and whitespace validators passed. The host has Node 22 instead of the repository-pinned Node 24, so JavaScript validators were invoked directly; pinned-runtime enforcement remains covered by CI.
+- Follow-up: Continue with `P1-T007` to make confirmed requirement replacements, revision history, and `requirement.updated` events one atomic durable operation.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

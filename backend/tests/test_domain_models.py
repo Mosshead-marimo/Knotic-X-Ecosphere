@@ -12,6 +12,7 @@ from knotic_api.domain import (
     Customer,
     DomainEvent,
     EventType,
+    MemoryFact,
     Message,
     MessageSource,
     Objection,
@@ -150,7 +151,18 @@ def test_message_outcome_and_event_business_invariants() -> None:
 
 
 def test_domain_json_schemas_match_versioned_snapshot() -> None:
-    model_types = (Customer, Requirement, Objection, Qualification, Message, ToolCall, Outcome, DomainEvent, SalesState)
+    model_types = (
+        Customer,
+        MemoryFact,
+        Requirement,
+        Objection,
+        Qualification,
+        Message,
+        ToolCall,
+        Outcome,
+        DomainEvent,
+        SalesState,
+    )
     actual = {
         model.__name__: hashlib.sha256(
             json.dumps(model.model_json_schema(), sort_keys=True, separators=(",", ":")).encode()

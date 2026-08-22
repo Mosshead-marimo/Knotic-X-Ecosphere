@@ -46,7 +46,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: Lifecycle transitions obey the contract and are auditable; unauthorized cross-tenant access is impossible.
 - Verify: API contract, authorization, idempotency, and rate-limit tests.
 
-### [ ] P1-T006 — Implement structured memory updates
+### [x] P1-T006 — Implement structured memory updates
 
 - Dependencies: P1-T001, P1-T003, P1-T004.
 - Implement: Pure merge rules for customer, company, role, users, use cases, integrations, budget, timeline, competitors, objections, current topic, and next action.

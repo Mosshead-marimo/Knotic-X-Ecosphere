@@ -39,6 +39,20 @@ class RequirementField(StrEnum):
     SECURITY = "security"
 
 
+class MemoryField(StrEnum):
+    CUSTOMER_NAME = "customer_name"
+    COMPANY = "company"
+    ROLE = "role"
+    USERS = "users"
+    USE_CASES = "use_cases"
+    INTEGRATIONS = "integrations"
+    BUDGET = "budget"
+    TIMELINE = "timeline"
+    COMPETITORS = "competitors"
+    CURRENT_TOPIC = "current_topic"
+    NEXT_ACTION = "next_action"
+
+
 class ObjectionCategory(StrEnum):
     PRICE = "PRICE"
     TIMING = "TIMING"

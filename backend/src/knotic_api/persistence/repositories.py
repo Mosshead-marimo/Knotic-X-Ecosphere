@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.engine import Connection, RowMapping
 
-from knotic_api.domain.models import DomainEvent, Message, Objection, Outcome, Requirement, ToolCall
+from knotic_api.domain.models import DomainEvent, Message, Objection, Outcome, Requirement, SalesState, ToolCall
 from knotic_api.domain.types import EventType, RequirementUpdateSource, SessionStatus
 
 from . import schema_v1 as schema
@@ -60,6 +60,9 @@ class SessionRecord:
     summary_ciphertext: bytes | None
     latest_request_ciphertext: bytes | None
     outcome: str | None
+    checkpoint_event_sequence: int
+    projection_schema_version: int
+    checkpointed_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +126,19 @@ class RequirementRevision:
     current_value: Any
     version: int
     changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DurableProjection:
+    session: SessionRecord
+    lead: RowMapping | None
+    requirements: tuple[RowMapping, ...]
+    requirement_changes: tuple[RowMapping, ...]
+    objections: tuple[RowMapping, ...]
+    competitors: tuple[RowMapping, ...]
+    qualification: RowMapping | None
+    outcome: RowMapping | None
+    event_watermark: int
 
 
 class TenantRepository:
@@ -267,6 +283,9 @@ class SessionRepository(TenantRepository):
             summary_ciphertext=row["summary_ciphertext"],
             latest_request_ciphertext=row["latest_request_ciphertext"],
             outcome=row["outcome"],
+            checkpoint_event_sequence=row["checkpoint_event_sequence"],
+            projection_schema_version=row["projection_schema_version"],
+            checkpointed_at=row["checkpointed_at"],
         )
 
 
@@ -384,6 +403,7 @@ class RequirementRepository(TenantRepository):
                     field=requirement.field.value,
                     confirmed_at=requirement.updated_at,
                     source_turn_id=requirement.source_turn_id,
+                    confidence=requirement.confidence,
                     version=requirement.version,
                     **values,
                 )
@@ -402,6 +422,7 @@ class RequirementRepository(TenantRepository):
                 .values(
                     confirmed_at=requirement.updated_at,
                     source_turn_id=requirement.source_turn_id,
+                    confidence=requirement.confidence,
                     version=requirement.version,
                     **values,
                 )
@@ -446,6 +467,20 @@ class RequirementRepository(TenantRepository):
             },
         )
         EventRepository(self.connection, self.tenant_id).append(event)
+        self.connection.execute(
+            schema.sales_sessions.update()
+            .where(
+                schema.sales_sessions.c.tenant_id == self.tenant_id,
+                schema.sales_sessions.c.id == requirement.session_id,
+            )
+            .values(
+                version=schema.sales_sessions.c.version + 1,
+                checkpoint_event_sequence=event.sequence,
+                projection_schema_version=1,
+                checkpointed_at=requirement.updated_at,
+                updated_at=requirement.updated_at,
+            )
+        )
         return RequirementRevision(
             requirement_id=requirement_id,
             event_id=command.event_id,
@@ -511,7 +546,7 @@ class ObjectionRepository(TenantRepository):
             latest_turn_id=objection.latest_turn_id,
             version=objection.version,
         )
-        result = self.connection.execute(
+        saved_id = self.connection.execute(
             statement.on_conflict_do_update(
                 index_elements=[schema.objections.c.id],
                 set_={
@@ -523,11 +558,11 @@ class ObjectionRepository(TenantRepository):
                 },
                 where=(schema.objections.c.tenant_id == self.tenant_id)
                 & (schema.objections.c.version < statement.excluded.version),
-            )
-        )
-        if result.rowcount != 1:
+            ).returning(schema.objections.c.id)
+        ).scalar_one_or_none()
+        if saved_id is None:
             raise ValueError("objection version did not increase")
-        return objection.objection_id
+        return cast(UUID, saved_id)
 
 
 class MeetingRepository(TenantRepository):
@@ -674,6 +709,142 @@ class EventRepository(TenantRepository):
                 .limit(limit)
             ).mappings()
         )
+
+
+class ProjectionRepository(TenantRepository):
+    """Reads one consistent durable aggregate for active-state reconstruction."""
+
+    def load(self, session_id: UUID) -> DurableProjection | None:
+        session = SessionRepository(self.connection, self.tenant_id).get(session_id, for_update=True)
+        if session is None:
+            return None
+        lead = None if session.lead_id is None else LeadRepository(self.connection, self.tenant_id).get(session.lead_id)
+        requirements = tuple(
+            self.connection.execute(
+                sa.select(schema.requirements_current)
+                .where(
+                    schema.requirements_current.c.tenant_id == self.tenant_id,
+                    schema.requirements_current.c.session_id == session_id,
+                )
+                .order_by(schema.requirements_current.c.field, schema.requirements_current.c.id)
+            ).mappings()
+        )
+        requirement_changes = tuple(
+            self.connection.execute(
+                sa.select(schema.requirement_changes)
+                .where(
+                    schema.requirement_changes.c.tenant_id == self.tenant_id,
+                    schema.requirement_changes.c.session_id == session_id,
+                )
+                .order_by(schema.requirement_changes.c.changed_at, schema.requirement_changes.c.id)
+            ).mappings()
+        )
+        objections = tuple(
+            self.connection.execute(
+                sa.select(schema.objections)
+                .where(
+                    schema.objections.c.tenant_id == self.tenant_id,
+                    schema.objections.c.session_id == session_id,
+                )
+                .order_by(schema.objections.c.created_at, schema.objections.c.id)
+            ).mappings()
+        )
+        competitors = tuple(
+            self.connection.execute(
+                sa.select(schema.session_competitors)
+                .where(
+                    schema.session_competitors.c.tenant_id == self.tenant_id,
+                    schema.session_competitors.c.session_id == session_id,
+                )
+                .order_by(schema.session_competitors.c.created_at, schema.session_competitors.c.id)
+            ).mappings()
+        )
+        qualification = (
+            self.connection.execute(
+                sa.select(schema.qualification_snapshots)
+                .where(
+                    schema.qualification_snapshots.c.tenant_id == self.tenant_id,
+                    schema.qualification_snapshots.c.session_id == session_id,
+                )
+                .order_by(
+                    schema.qualification_snapshots.c.calculated_at.desc(), schema.qualification_snapshots.c.id.desc()
+                )
+                .limit(1)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        outcome = (
+            self.connection.execute(
+                sa.select(schema.session_outcomes)
+                .where(
+                    schema.session_outcomes.c.tenant_id == self.tenant_id,
+                    schema.session_outcomes.c.session_id == session_id,
+                    schema.session_outcomes.c.superseded_at.is_(None),
+                )
+                .order_by(schema.session_outcomes.c.assigned_at.desc(), schema.session_outcomes.c.id.desc())
+                .limit(1)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        watermark = self.connection.scalar(
+            sa.select(sa.func.coalesce(sa.func.max(schema.domain_events.c.sequence), 0)).where(
+                schema.domain_events.c.tenant_id == self.tenant_id,
+                schema.domain_events.c.session_id == session_id,
+            )
+        )
+        if watermark is None:
+            raise RuntimeError("event watermark query returned no value")
+        return DurableProjection(
+            session=session,
+            lead=lead,
+            requirements=requirements,
+            requirement_changes=requirement_changes,
+            objections=objections,
+            competitors=competitors,
+            qualification=qualification,
+            outcome=outcome,
+            event_watermark=int(watermark),
+        )
+
+    def checkpoint(self, state: SalesState, *, expected_version: int, event_watermark: int) -> bool:
+        self._require_tenant(state.tenant_id)
+        if state.version not in {expected_version, expected_version + 1}:
+            raise ValueError("checkpoint state must match or immediately follow the durable version")
+        if event_watermark < 0:
+            raise ValueError("event watermark must not be negative")
+        durable_watermark = self.connection.scalar(
+            sa.select(sa.func.coalesce(sa.func.max(schema.domain_events.c.sequence), 0)).where(
+                schema.domain_events.c.tenant_id == self.tenant_id,
+                schema.domain_events.c.session_id == state.session_id,
+            )
+        )
+        if durable_watermark is None or event_watermark > int(durable_watermark):
+            raise ValueError("checkpoint cannot advance beyond durable event history")
+        result = self.connection.execute(
+            schema.sales_sessions.update()
+            .where(
+                schema.sales_sessions.c.tenant_id == self.tenant_id,
+                schema.sales_sessions.c.id == state.session_id,
+                schema.sales_sessions.c.version == expected_version,
+                schema.sales_sessions.c.status == state.status.value,
+            )
+            .values(
+                version=state.version,
+                current_topic=state.current_topic,
+                current_intent=state.current_intent,
+                buying_stage=state.buying_stage.value,
+                qualification_score=None if state.qualification is None else state.qualification.total_score,
+                next_best_action=state.next_best_action.value,
+                outcome=None if state.outcome is None else state.outcome.outcome.value,
+                checkpoint_event_sequence=event_watermark,
+                projection_schema_version=state.schema_version,
+                checkpointed_at=state.updated_at,
+                updated_at=state.updated_at,
+            )
+        )
+        return result.rowcount == 1
 
 
 class IdempotencyRepository(TenantRepository):

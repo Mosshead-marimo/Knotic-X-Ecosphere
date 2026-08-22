@@ -483,6 +483,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/linting, strict mypy, and Alembic one-head validation passed. Seven real-PostgreSQL tests passed for the FR-05 `50 -> 250` example, current value, ordered old/new history, event payload and actor/source metadata, exact replay, conflicting replay, simultaneous corrections with exactly one winner, transaction rollback, tenant scoping, fresh migration, populated release-0002 upgrade, downgrade, re-upgrade, RLS, constraints, and query plans. The complete suite passed 55 tests against the pinned PostgreSQL 17/pgvector and Redis 8.8.1 containers.
 - Follow-up: Continue with `P1-T008` to hydrate cache misses from durable state, checkpoint watermarks, migrate projection versions, and recover after cache/process loss.
 
+### 2026-08-22 — Implemented state hydration and recovery
+
+- Phase: 1 (`P1-T008`, GitHub #28)
+- Status: Added
+- Files: Redis envelope migration, durable projection/checkpoint repository, state hydration and field-encryption boundary, checkpoint/confidence Alembic revision `20260822_0004`, recovery tests, persistence CI coverage, backend documentation, Phase 1 task status
+- Summary: Added Redis-first state loading with tenant-scoped durable reconstruction, authenticated decryption of sensitive lead/session/objection fields, typed current requirements plus revision provenance, qualification/outcome reconstruction, event-watermark validation, create-only cache warming, race handling, optimistic durable checkpoints, and atomic migration of legacy pre-watermark Redis envelopes. Requirement changes now advance the owning durable session version and checkpoint watermark. Recovery reads committed events but never appends or duplicates them. Corrected objection upsert confirmation to use PostgreSQL `RETURNING` rather than driver-dependent row counts.
+- Verification: Ruff formatting/linting and strict mypy passed across 26 source modules; Alembic reported one head at `20260822_0004`. The complete 58-test suite passed against pinned PostgreSQL 17/pgvector and Redis 8.8.1. Recovery coverage flushed Redis, rebuilt encrypted customer/requirement/provenance/objection state, instantiated a replacement service process, loaded the warmed cache, committed and recovered a newer checkpoint, verified exact event watermarks and unchanged event count, hid cross-tenant sessions, migrated a legacy cache envelope in place, and repeated fresh/populated migration downgrade/re-upgrade tests.
+- Follow-up: Continue with `P1-T009` to add least-privilege runtime roles, retention/erasure/export workflows, data minimization, and sensitive log filtering.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

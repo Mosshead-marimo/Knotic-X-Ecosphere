@@ -18,6 +18,7 @@ from .repositories import (
     MessageRepository,
     ObjectionRepository,
     OutcomeRepository,
+    ProjectionRepository,
     RequirementRepository,
     SessionRepository,
     ToolRepository,
@@ -122,6 +123,10 @@ class UnitOfWork:
     @property
     def events(self) -> EventRepository:
         return EventRepository(self._require_connection(), self.tenant_id)
+
+    @property
+    def projections(self) -> ProjectionRepository:
+        return ProjectionRepository(self._require_connection(), self.tenant_id)
 
     @property
     def idempotency(self) -> IdempotencyRepository:

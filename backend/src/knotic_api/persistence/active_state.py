@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from enum import StrEnum
@@ -35,6 +36,13 @@ return {1, tonumber(ARGV[5])}
 _COMPARE_AND_DELETE = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
   return redis.call('DEL', KEYS[1])
+end
+return 0
+"""
+_COMPARE_AND_REPLACE = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+  return 1
 end
 return 0
 """
@@ -101,6 +109,7 @@ class ActiveStateEnvelope(BaseModel):
 class ActiveStateRead:
     status: CacheReadStatus
     envelope: ActiveStateEnvelope | None = None
+    migrated: bool = False
 
 
 PositiveSeconds = Annotated[int, Field(ge=1, le=604_800)]
@@ -134,6 +143,9 @@ class RedisSalesStateRepository:
         return f"knotic:{self._environment}:{{{tenant_id}:{session_id}}}:state:v1"
 
     def load(self, tenant_id: UUID, session_id: UUID) -> ActiveStateRead:
+        return self._load(tenant_id, session_id, allow_migration_retry=True)
+
+    def _load(self, tenant_id: UUID, session_id: UUID, *, allow_migration_retry: bool) -> ActiveStateRead:
         key = self.key(tenant_id, session_id)
         try:
             raw = self._client.getex(key, ex=self._ttl_seconds)
@@ -145,14 +157,30 @@ class RedisSalesStateRepository:
             self._discard_corrupt(key, raw)
             return ActiveStateRead(CacheReadStatus.CORRUPT)
         try:
-            envelope = ActiveStateEnvelope.model_validate_json(raw)
+            document = json.loads(raw)
+            if not isinstance(document, dict):
+                raise ValueError("active state envelope must be an object")
+            migrated = document.get("schema_version") == 0
+            if migrated:
+                document = self._migrate_v0(document)
+            envelope = ActiveStateEnvelope.model_validate(document)
         except (ValidationError, ValueError):
             self._discard_corrupt(key, raw)
             return ActiveStateRead(CacheReadStatus.CORRUPT)
         if envelope.tenant_id != tenant_id or envelope.session_id != session_id:
             self._discard_corrupt(key, raw)
             return ActiveStateRead(CacheReadStatus.CORRUPT)
-        return ActiveStateRead(CacheReadStatus.HIT, envelope)
+        if migrated:
+            payload = self._serialize(envelope)
+            try:
+                replaced = self._client.eval(_COMPARE_AND_REPLACE, 1, key, raw, payload, self._ttl_seconds)
+            except redis.RedisError as error:
+                raise ActiveStateUnavailable("active state migration was not confirmed") from error
+            if int(replaced) != 1:
+                if allow_migration_retry:
+                    return self._load(tenant_id, session_id, allow_migration_retry=False)
+                raise ActiveStateUnavailable("active state changed repeatedly during schema migration")
+        return ActiveStateRead(CacheReadStatus.HIT, envelope, migrated=migrated)
 
     def create(
         self,
@@ -249,6 +277,20 @@ class RedisSalesStateRepository:
             self._client.eval(_COMPARE_AND_DELETE, 1, key, observed_payload)
         except redis.RedisError as error:
             raise ActiveStateUnavailable("corrupt active state could not be discarded") from error
+
+    @staticmethod
+    def _migrate_v0(document: dict[str, object]) -> dict[str, object]:
+        """Upgrade the pre-watermark envelope without mutating its SalesState."""
+
+        required = {"tenant_id", "session_id", "state_version", "updated_at", "state"}
+        if not required.issubset(document):
+            raise ValueError("legacy active state is missing required fields")
+        return {
+            **document,
+            "schema_version": 1,
+            "event_watermark": 0,
+            "fencing_token": 0,
+        }
 
     @staticmethod
     def _require_uuid7(value: UUID) -> None:

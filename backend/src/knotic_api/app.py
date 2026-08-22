@@ -11,6 +11,7 @@ from flask.typing import ResponseReturnValue
 
 from .config import BackendSettings, load_backend_settings
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
+from .privacy_logging import install_sensitive_data_filter
 
 
 def create_app(
@@ -20,6 +21,7 @@ def create_app(
 ) -> Flask:
     resolved = settings or load_backend_settings()
     app = Flask(__name__)
+    install_sensitive_data_filter(app.logger)
     app.config["KNOTIC_SETTINGS"] = resolved
     dependencies = lifecycle_dependencies or build_lifecycle_dependencies(
         database_url=resolved.database_url.get_secret_value(),

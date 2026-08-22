@@ -67,7 +67,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: A session resumes consistently after backend restart or Redis loss without duplicating committed events.
 - Verify: Kill/restart, Redis flush, replay, and version-upgrade tests.
 
-### [ ] P1-T009 — Enforce privacy, retention, and tenant isolation
+### [x] P1-T009 — Enforce privacy, retention, and tenant isolation
 
 - Dependencies: P1-T002, P1-T004.
 - Implement: Tenant scoping, least-privilege database roles, encryption policy, field minimization, retention jobs, deletion/export workflows, and sensitive-field log filters.

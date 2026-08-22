@@ -78,6 +78,7 @@ jobs:
           backend/tests/test_active_state_repository.py
           backend/tests/test_durable_repositories.py
           backend/tests/test_state_hydration.py
+          backend/tests/test_privacy_lifecycle.py
           backend/tests/test_session_lifecycle_api.py
 
   container-security:

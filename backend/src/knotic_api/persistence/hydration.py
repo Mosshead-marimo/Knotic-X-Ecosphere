@@ -102,6 +102,8 @@ class SalesStateHydrator:
 
     def load(self, tenant_id: UUID, session_id: UUID, *, fencing_token: int = 0) -> HydratedState:
         cached = self._active_states.load(tenant_id, session_id)
+        if cached.status == CacheReadStatus.BLOCKED:
+            raise StateRecoveryError("session processing is blocked by a privacy workflow")
         if cached.status == CacheReadStatus.HIT and cached.envelope is not None:
             return HydratedState(
                 envelope=cached.envelope,

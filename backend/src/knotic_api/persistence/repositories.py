@@ -129,6 +129,27 @@ class RequirementRevision:
 
 
 @dataclass(frozen=True, slots=True)
+class AuditRecordCreate:
+    audit_id: UUID
+    actor_id: UUID | None
+    workload: str
+    action: str
+    target_type: str
+    target_id: UUID | None
+    result: str
+    correlation_id: UUID
+    redacted_metadata: dict[str, str | int | bool | None]
+    occurred_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ErasureOperationCreate:
+    operation_id: UUID
+    actor_id: UUID
+    session_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
 class DurableProjection:
     session: SessionRecord
     lead: RowMapping | None
@@ -845,6 +866,262 @@ class ProjectionRepository(TenantRepository):
             )
         )
         return result.rowcount == 1
+
+
+class PrivacyRepository(TenantRepository):
+    """Tenant-scoped audit, export, retention, and erasure primitives."""
+
+    def append_audit(self, record: AuditRecordCreate) -> UUID:
+        self.connection.execute(
+            schema.audit_events.insert().values(
+                id=record.audit_id,
+                tenant_id=self.tenant_id,
+                actor_id=record.actor_id,
+                workload=record.workload,
+                action=record.action,
+                target_type=record.target_type,
+                target_id=record.target_id,
+                result=record.result,
+                correlation_id=record.correlation_id,
+                redacted_metadata=record.redacted_metadata,
+                occurred_at=record.occurred_at,
+            )
+        )
+        return record.audit_id
+
+    def request_erasure(self, command: ErasureOperationCreate) -> UUID:
+        session = SessionRepository(self.connection, self.tenant_id).get(command.session_id, for_update=True)
+        if session is None:
+            raise ValueError("session was not found")
+        existing = self.connection.scalar(
+            sa.select(schema.operations.c.id).where(
+                schema.operations.c.tenant_id == self.tenant_id,
+                schema.operations.c.session_id == command.session_id,
+                schema.operations.c.kind == "SESSION_ERASURE",
+                schema.operations.c.status.in_(["PENDING", "PENDING_CONFIRMATION", "RUNNING"]),
+            )
+        )
+        if existing is not None:
+            return cast(UUID, existing)
+        self.connection.execute(
+            schema.operations.insert().values(
+                id=command.operation_id,
+                tenant_id=self.tenant_id,
+                actor_id=command.actor_id,
+                session_id=command.session_id,
+                kind="SESSION_ERASURE",
+                status="PENDING",
+            )
+        )
+        return command.operation_id
+
+    def get_operation(self, operation_id: UUID, *, for_update: bool = False) -> RowMapping | None:
+        statement = sa.select(schema.operations).where(
+            schema.operations.c.tenant_id == self.tenant_id,
+            schema.operations.c.id == operation_id,
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        return self._one_or_none(statement)
+
+    def processing_blocked(self, session_id: UUID) -> bool:
+        blocked = self.connection.scalar(
+            sa.select(
+                sa.exists().where(
+                    schema.operations.c.tenant_id == self.tenant_id,
+                    schema.operations.c.session_id == session_id,
+                    schema.operations.c.kind.in_(["SESSION_ERASURE", "LEGAL_HOLD"]),
+                    schema.operations.c.status.in_(["PENDING", "PENDING_CONFIRMATION", "RUNNING", "ACTIVE"]),
+                )
+            )
+        )
+        return bool(blocked)
+
+    def has_legal_hold(self, session_id: UUID) -> bool:
+        held = self.connection.scalar(
+            sa.select(
+                sa.exists().where(
+                    schema.operations.c.tenant_id == self.tenant_id,
+                    schema.operations.c.session_id == session_id,
+                    schema.operations.c.kind == "LEGAL_HOLD",
+                    schema.operations.c.status == "ACTIVE",
+                )
+            )
+        )
+        return bool(held)
+
+    def requires_provider_unlink(self, session_id: UUID) -> bool:
+        link = self.connection.scalar(
+            sa.select(schema.provider_links.c.id)
+            .select_from(
+                schema.sales_sessions.join(
+                    schema.provider_links,
+                    (schema.provider_links.c.tenant_id == schema.sales_sessions.c.tenant_id)
+                    & (schema.provider_links.c.lead_id == schema.sales_sessions.c.lead_id),
+                )
+            )
+            .where(
+                schema.sales_sessions.c.tenant_id == self.tenant_id,
+                schema.sales_sessions.c.id == session_id,
+            )
+            .limit(1)
+        )
+        return link is not None
+
+    def mark_provider_confirmation_pending(self, operation_id: UUID) -> None:
+        self.connection.execute(
+            schema.operations.update()
+            .where(
+                schema.operations.c.tenant_id == self.tenant_id,
+                schema.operations.c.id == operation_id,
+                schema.operations.c.kind == "SESSION_ERASURE",
+            )
+            .values(status="PENDING_CONFIRMATION", updated_at=schema.utc_now)
+        )
+
+    def minimize_session(self, session_id: UUID) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for table in (
+            schema.messages,
+            schema.requirement_changes,
+            schema.requirements_current,
+            schema.objections,
+            schema.session_competitors,
+            schema.qualification_snapshots,
+        ):
+            result = self.connection.execute(
+                table.delete().where(table.c.tenant_id == self.tenant_id, table.c.session_id == session_id)
+            )
+            counts[table.name] = max(0, result.rowcount or 0)
+        self.connection.execute(
+            schema.sales_sessions.update()
+            .where(
+                schema.sales_sessions.c.tenant_id == self.tenant_id,
+                schema.sales_sessions.c.id == session_id,
+            )
+            .values(
+                current_topic=None,
+                current_intent=None,
+                summary_ciphertext=None,
+                latest_request_ciphertext=None,
+                updated_at=schema.utc_now,
+            )
+        )
+        return counts
+
+    def erase_session(self, session_id: UUID, *, operation_id: UUID | None = None) -> dict[str, int]:
+        session = SessionRepository(self.connection, self.tenant_id).get(session_id, for_update=True)
+        if session is None:
+            raise ValueError("session was not found")
+        if self.has_legal_hold(session_id):
+            raise ValueError("session is protected by an active legal hold")
+        counts: dict[str, int] = {}
+        tool_call_ids = sa.select(schema.tool_calls.c.id).where(
+            schema.tool_calls.c.tenant_id == self.tenant_id,
+            schema.tool_calls.c.session_id == session_id,
+        )
+        counts["tool_results"] = max(
+            0,
+            self.connection.execute(
+                schema.tool_results.delete().where(
+                    schema.tool_results.c.tenant_id == self.tenant_id,
+                    schema.tool_results.c.tool_call_id.in_(tool_call_ids),
+                )
+            ).rowcount
+            or 0,
+        )
+        for table in (
+            schema.calls,
+            schema.messages,
+            schema.requirement_changes,
+            schema.requirements_current,
+            schema.objections,
+            schema.session_competitors,
+            schema.qualification_snapshots,
+            schema.tool_calls,
+            schema.meetings,
+            schema.followups,
+            schema.handoffs,
+            schema.session_outcomes,
+            schema.domain_events,
+        ):
+            result = self.connection.execute(
+                table.delete().where(table.c.tenant_id == self.tenant_id, table.c.session_id == session_id)
+            )
+            counts[table.name] = max(0, result.rowcount or 0)
+        self.connection.execute(
+            schema.operations.update()
+            .where(
+                schema.operations.c.tenant_id == self.tenant_id,
+                schema.operations.c.session_id == session_id,
+            )
+            .values(session_id=None, updated_at=schema.utc_now)
+        )
+        if operation_id is not None:
+            self.connection.execute(
+                schema.operations.update()
+                .where(
+                    schema.operations.c.tenant_id == self.tenant_id,
+                    schema.operations.c.id == operation_id,
+                )
+                .values(status="COMPLETED", result_reference="erased", updated_at=schema.utc_now)
+            )
+        deleted = self.connection.execute(
+            schema.sales_sessions.delete().where(
+                schema.sales_sessions.c.tenant_id == self.tenant_id,
+                schema.sales_sessions.c.id == session_id,
+            )
+        )
+        counts["sales_sessions"] = max(0, deleted.rowcount or 0)
+        return counts
+
+    def retention_candidates(self, *, ended_before: datetime, action: str, limit: int) -> tuple[UUID, ...]:
+        if not 1 <= limit <= 1_000:
+            raise ValueError("retention batch limit must be between 1 and 1000")
+        held = sa.exists().where(
+            schema.operations.c.tenant_id == self.tenant_id,
+            schema.operations.c.session_id == schema.sales_sessions.c.id,
+            schema.operations.c.kind == "LEGAL_HOLD",
+            schema.operations.c.status == "ACTIVE",
+        )
+        processed = sa.exists().where(
+            schema.audit_events.c.tenant_id == self.tenant_id,
+            schema.audit_events.c.target_id == schema.sales_sessions.c.id,
+            schema.audit_events.c.action == action,
+            schema.audit_events.c.result == "SUCCEEDED",
+        )
+        return tuple(
+            self.connection.scalars(
+                sa.select(schema.sales_sessions.c.id)
+                .where(
+                    schema.sales_sessions.c.tenant_id == self.tenant_id,
+                    schema.sales_sessions.c.ended_at.is_not(None),
+                    schema.sales_sessions.c.ended_at < ended_before,
+                    ~held,
+                    ~processed,
+                )
+                .order_by(schema.sales_sessions.c.ended_at, schema.sales_sessions.c.id)
+                .limit(limit)
+            )
+        )
+
+    def purge_housekeeping(self, *, now: datetime, operation_cutoff: datetime) -> tuple[int, int]:
+        idempotency = self.connection.execute(
+            schema.idempotency_records.delete().where(
+                schema.idempotency_records.c.tenant_id == self.tenant_id,
+                schema.idempotency_records.c.expires_at < now,
+            )
+        ).rowcount
+        operations = self.connection.execute(
+            schema.operations.update()
+            .where(
+                schema.operations.c.tenant_id == self.tenant_id,
+                schema.operations.c.status.in_(["COMPLETED", "FAILED", "CANCELLED"]),
+                schema.operations.c.updated_at < operation_cutoff,
+            )
+            .values(result_reference=None, safe_error_detail=None, updated_at=schema.utc_now)
+        ).rowcount
+        return max(0, idempotency or 0), max(0, operations or 0)
 
 
 class IdempotencyRepository(TenantRepository):

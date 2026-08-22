@@ -46,6 +46,16 @@ if redis.call('GET', KEYS[1]) == ARGV[1] then
 end
 return 0
 """
+_READ_STATE = """
+if redis.call('EXISTS', KEYS[2]) == 1 then return '__KNOTIC_BLOCKED__' end
+local raw = redis.call('GET', KEYS[1])
+if raw then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return raw
+"""
+_BLOCK_PROCESSING = """
+redis.call('SET', KEYS[2], '1', 'EX', ARGV[1])
+return redis.call('DEL', KEYS[1])
+"""
 
 
 class ActiveStateError(RuntimeError):
@@ -78,6 +88,7 @@ class CacheReadStatus(StrEnum):
     HIT = "HIT"
     MISS = "MISS"
     CORRUPT = "CORRUPT"
+    BLOCKED = "BLOCKED"
 
 
 class ActiveStateEnvelope(BaseModel):
@@ -142,17 +153,30 @@ class RedisSalesStateRepository:
         self._require_uuid7(session_id)
         return f"knotic:{self._environment}:{{{tenant_id}:{session_id}}}:state:v1"
 
+    def privacy_block_key(self, tenant_id: UUID, session_id: UUID) -> str:
+        self._require_uuid7(tenant_id)
+        self._require_uuid7(session_id)
+        return f"knotic:{self._environment}:{{{tenant_id}:{session_id}}}:privacy-block:v1"
+
     def load(self, tenant_id: UUID, session_id: UUID) -> ActiveStateRead:
         return self._load(tenant_id, session_id, allow_migration_retry=True)
 
     def _load(self, tenant_id: UUID, session_id: UUID, *, allow_migration_retry: bool) -> ActiveStateRead:
         key = self.key(tenant_id, session_id)
         try:
-            raw = self._client.getex(key, ex=self._ttl_seconds)
+            raw = self._client.eval(
+                _READ_STATE,
+                2,
+                key,
+                self.privacy_block_key(tenant_id, session_id),
+                self._ttl_seconds,
+            )
         except redis.RedisError as error:
             raise ActiveStateUnavailable("active state read was not confirmed") from error
         if raw is None:
             return ActiveStateRead(CacheReadStatus.MISS)
+        if raw == b"__KNOTIC_BLOCKED__":
+            return ActiveStateRead(CacheReadStatus.BLOCKED)
         if not isinstance(raw, bytes) or len(raw) > self._max_payload_bytes:
             self._discard_corrupt(key, raw)
             return ActiveStateRead(CacheReadStatus.CORRUPT)
@@ -248,6 +272,20 @@ class RedisSalesStateRepository:
             self._client.delete(self.key(tenant_id, session_id))
         except redis.RedisError as error:
             raise ActiveStateUnavailable("active state deletion was not confirmed") from error
+
+    def block_processing(self, tenant_id: UUID, session_id: UUID, *, ttl_seconds: int = 604_800) -> None:
+        if not 86_400 <= ttl_seconds <= 2_592_000:
+            raise ValueError("privacy processing blocks must last between 1 and 30 days")
+        try:
+            self._client.eval(
+                _BLOCK_PROCESSING,
+                2,
+                self.key(tenant_id, session_id),
+                self.privacy_block_key(tenant_id, session_id),
+                ttl_seconds,
+            )
+        except redis.RedisError as error:
+            raise ActiveStateUnavailable("privacy processing block was not confirmed") from error
 
     def _envelope(
         self,

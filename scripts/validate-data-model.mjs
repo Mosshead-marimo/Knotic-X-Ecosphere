@@ -20,12 +20,12 @@ for (const requirement of ["FR-04", "FR-05", "FR-11", "FR-12", "FR-13", "FR-14"]
 for (const control of ["UUIDv7", "composite foreign keys", "row-level security", "optimistic version", "for update skip locked", "application envelope encryption", "keyed HMAC", "expand/migrate/contract", "Raw audio is not persisted by default"]) requireText(control, "missing production control");
 
 const redisRows = [...model.matchAll(/^\| `knotic:.*\|.*\|.*\|$/gmu)];
-if (redisRows.length < 7) failures.push(`expected at least 7 Redis key contracts, found ${redisRows.length}`);
+if (redisRows.length < 8) failures.push(`expected at least 8 Redis key contracts, found ${redisRows.length}`);
 
 if (failures.length) {
   console.error(`Data model validation failed with ${failures.length} issue(s):`);
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exitCode = 1;
 } else {
-  console.log("Data model validation passed: 30 entities, 7 Redis key contracts, complete state/event ownership, and FR-04/05/11-14 traceability.");
+  console.log("Data model validation passed: 30 entities, 8 Redis key contracts, complete state/event ownership, and FR-04/05/11-14 traceability.");
 }

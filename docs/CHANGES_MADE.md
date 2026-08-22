@@ -492,6 +492,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/linting and strict mypy passed across 26 source modules; Alembic reported one head at `20260822_0004`. The complete 58-test suite passed against pinned PostgreSQL 17/pgvector and Redis 8.8.1. Recovery coverage flushed Redis, rebuilt encrypted customer/requirement/provenance/objection state, instantiated a replacement service process, loaded the warmed cache, committed and recovered a newer checkpoint, verified exact event watermarks and unchanged event count, hid cross-tenant sessions, migrated a legacy cache envelope in place, and repeated fresh/populated migration downgrade/re-upgrade tests.
 - Follow-up: Continue with `P1-T009` to add least-privilege runtime roles, retention/erasure/export workflows, data minimization, and sensitive log filtering.
 
+### 2026-08-22 — Enforced privacy, retention, and tenant isolation
+
+- Phase: 1 (`P1-T009`, GitHub #29)
+- Status: Added
+- Files: privacy lifecycle and logging modules, tenant-scoped privacy repository, Redis privacy tombstone, least-privilege role migration `20260822_0005`, lifecycle/security tests, persistence CI, data model/validator, data-lifecycle runbook, backend documentation, Phase 1 task status
+- Summary: Added AES-256-GCM field protection with tenant/aggregate/field authentication, allowlisted minimized audit metadata, versioned exports, idempotent erasure requests, atomic Redis processing tombstones, provider-confirmation gating, legal-hold enforcement, foreign-key-ordered erasure, 365-day minimization, 400-day purge, expired idempotency cleanup, terminal-operation sanitization, and replay-safe audit actions. Installed operational log redaction on Flask handlers. Added `NOLOGIN`/`NOBYPASSRLS` runtime, retention, and auditor group roles with append-only history restrictions and no auditor writes. Documented exact export/erasure/retention/restore procedures and external provider/backup gates.
+- Verification: Ruff formatting/security linting and strict mypy passed across 28 source modules; Alembic reported one head at `20260822_0005`. Three real-service privacy integration tests passed for encrypted export, audit minimization, erasure request/completion, Redis eviction and persistent processing block, retained proof, 365-day minimization, 400-day purge, active legal-hold skip, runtime cross-tenant hiding, and auditor write denial. Two unit tests passed for credential/email/connection/payload log redaction and invalid retention-window rejection. The complete suite passed 63 tests against the pinned PostgreSQL 17/pgvector and Redis 8.8.1 containers after tombstone hardening. API, eight-key data-model, MCP, operations-document, repository-secret, and whitespace validators passed.
+- Follow-up: Continue with `P1-T010` for metrics, traces, latency/load baselines, dashboards, alerts, and approved service-level targets. Production activation still requires provider deletion adapters and backup tombstone replay rehearsal per `DATA_LIFECYCLE.md`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

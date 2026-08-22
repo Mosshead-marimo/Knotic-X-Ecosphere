@@ -1,0 +1,16 @@
+{
+  "title": "Knotic State and Data",
+  "uid": "knotic-state-data",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["knotic", "state", "slo"],
+  "panels": [
+    {"id": 1, "title": "State load p95", "type": "timeseries", "targets": [{"expr": "histogram_quantile(0.95, sum by (le, source) (rate(knotic_state_load_duration_seconds_bucket[5m])))", "legendFormat": "{{source}}"}]},
+    {"id": 2, "title": "Cache hit ratio", "type": "timeseries", "targets": [{"expr": "sum(rate(knotic_state_cache_reads_total{status=\"hit\"}[5m])) / clamp_min(sum(rate(knotic_state_cache_reads_total[5m])), 0.000001)"}]},
+    {"id": 3, "title": "Conflicts and retries", "type": "timeseries", "targets": [{"expr": "sum(rate(knotic_state_conflicts_total[5m]))"}, {"expr": "sum(rate(knotic_state_retries_total[5m]))"}]},
+    {"id": 4, "title": "Recovery outcomes", "type": "timeseries", "targets": [{"expr": "sum by (outcome) (rate(knotic_state_recoveries_total[5m]))", "legendFormat": "{{outcome}}"}]},
+    {"id": 5, "title": "Database pool saturation", "type": "timeseries", "targets": [{"expr": "knotic_db_pool_saturation_ratio"}]},
+    {"id": 6, "title": "State failures", "type": "timeseries", "targets": [{"expr": "sum by (component, code) (rate(knotic_state_failures_total[5m]))", "legendFormat": "{{component}} / {{code}}"}]}
+  ]
+}

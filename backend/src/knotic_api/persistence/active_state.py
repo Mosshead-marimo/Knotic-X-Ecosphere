@@ -13,6 +13,7 @@ import redis
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from knotic_api.domain.models import SalesState
+from knotic_api.observability import StateDataObservability
 
 _ENVIRONMENT = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 _COMPARE_AND_SET = """
@@ -136,6 +137,7 @@ class RedisSalesStateRepository:
         environment: str,
         ttl_seconds: PositiveSeconds = 86_400,
         max_payload_bytes: int = 512 * 1024,
+        observability: StateDataObservability | None = None,
     ) -> None:
         if not _ENVIRONMENT.fullmatch(environment):
             raise ValueError("environment must be lowercase and safe for Redis keys")
@@ -147,6 +149,7 @@ class RedisSalesStateRepository:
         self._environment = environment
         self._ttl_seconds = ttl_seconds
         self._max_payload_bytes = max_payload_bytes
+        self._observability = observability
 
     def key(self, tenant_id: UUID, session_id: UUID) -> str:
         self._require_uuid7(tenant_id)
@@ -225,6 +228,8 @@ class RedisSalesStateRepository:
         except redis.RedisError as error:
             raise ActiveStateUnavailable("active state creation was not confirmed") from error
         if created is not True:
+            if self._observability is not None:
+                self._observability.conflicts.labels(operation="create").inc()
             raise ConcurrentStateUpdate(expected_version=0, observed_version=None)
         return envelope
 
@@ -262,6 +267,8 @@ class RedisSalesStateRepository:
             raise CorruptActiveState("active state was corrupt and has been discarded")
         if code == -3:
             raise StaleFencingToken(proposed_token=fencing_token, observed_token=observed)
+        if self._observability is not None:
+            self._observability.conflicts.labels(operation="compare_and_set").inc()
         raise ConcurrentStateUpdate(
             expected_version=expected_version,
             observed_version=None if code == -1 else observed,

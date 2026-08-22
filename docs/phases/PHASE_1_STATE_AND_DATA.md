@@ -74,7 +74,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: Tenant leakage tests fail closed; deletion and retention behavior is auditable and documented.
 - Verify: Security integration tests and data-lifecycle rehearsal.
 
-### [ ] P1-T010 — Add state/data observability and performance baselines
+### [x] P1-T010 — Add state/data observability and performance baselines
 
 - Dependencies: P1-T005, P1-T008.
 - Implement: Metrics and traces for latency, conflicts, retries, cache hit rate, database pool health, and recovery; define service-level targets.

@@ -80,6 +80,7 @@ jobs:
           backend/tests/test_state_hydration.py
           backend/tests/test_privacy_lifecycle.py
           backend/tests/test_session_lifecycle_api.py
+          backend/tests/test_state_performance.py
 
   container-security:
     name: container-security

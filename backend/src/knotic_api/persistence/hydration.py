@@ -22,6 +22,7 @@ from knotic_api.domain.types import (
     RequirementField,
     SessionStatus,
 )
+from knotic_api.observability import StateDataObservability
 from knotic_api.security import derive_key
 
 from .active_state import ActiveStateEnvelope, CacheReadStatus, ConcurrentStateUpdate, RedisSalesStateRepository
@@ -95,13 +96,36 @@ class SalesStateHydrator:
         active_states: RedisSalesStateRepository,
         *,
         field_cipher: StateFieldCipher,
+        observability: StateDataObservability | None = None,
     ) -> None:
         self._engine = engine
         self._active_states = active_states
         self._field_cipher = field_cipher
+        self._observability = observability
 
-    def load(self, tenant_id: UUID, session_id: UUID, *, fencing_token: int = 0) -> HydratedState:
+    def load(
+        self,
+        tenant_id: UUID,
+        session_id: UUID,
+        *,
+        fencing_token: int = 0,
+        correlation_id: UUID | None = None,
+    ) -> HydratedState:
+        if self._observability is None:
+            return self._load(tenant_id, session_id, fencing_token=fencing_token)
+        with self._observability.timed_load(correlation_id) as labels:
+            try:
+                result = self._load(tenant_id, session_id, fencing_token=fencing_token)
+                labels.update(source=result.source.value.lower(), outcome="success")
+                return result
+            except Exception:
+                self._observability.failures.labels(component="hydrator", code="load_failed").inc()
+                raise
+
+    def _load(self, tenant_id: UUID, session_id: UUID, *, fencing_token: int) -> HydratedState:
         cached = self._active_states.load(tenant_id, session_id)
+        if self._observability is not None:
+            self._observability.cache_reads.labels(status=cached.status.value.lower()).inc()
         if cached.status == CacheReadStatus.BLOCKED:
             raise StateRecoveryError("session processing is blocked by a privacy workflow")
         if cached.status == CacheReadStatus.HIT and cached.envelope is not None:
@@ -111,6 +135,14 @@ class SalesStateHydrator:
                 cache_warmed=False,
                 schema_migrated=cached.migrated,
             )
+        try:
+            return self._recover(tenant_id, session_id, fencing_token=fencing_token)
+        except Exception:
+            if self._observability is not None:
+                self._observability.recoveries.labels(outcome="failure").inc()
+            raise
+
+    def _recover(self, tenant_id: UUID, session_id: UUID, *, fencing_token: int) -> HydratedState:
         with UnitOfWork(self._engine, tenant_id=tenant_id) as work:
             projection = work.projections.load(session_id)
         if projection is None:
@@ -124,9 +156,16 @@ class SalesStateHydrator:
                 event_watermark=projection.event_watermark,
                 fencing_token=fencing_token,
             )
+            if self._observability is not None:
+                self._observability.recoveries.labels(outcome="success").inc()
             return HydratedState(envelope=envelope, source=HydrationSource.DURABLE, cache_warmed=True)
         except ConcurrentStateUpdate:
+            if self._observability is not None:
+                self._observability.conflicts.labels(operation="cache_warm").inc()
+                self._observability.retries.labels(operation="cache_warm").inc()
             winner = self._active_states.load(tenant_id, session_id)
+            if self._observability is not None:
+                self._observability.cache_reads.labels(status=winner.status.value.lower()).inc()
             if winner.status != CacheReadStatus.HIT or winner.envelope is None:
                 raise StateRecoveryError("cache warming raced without a readable winner") from None
             if (
@@ -134,6 +173,8 @@ class SalesStateHydrator:
                 or winner.envelope.event_watermark < projection.event_watermark
             ):
                 raise StateRecoveryError("cache warming winner is older than durable state") from None
+            if self._observability is not None:
+                self._observability.recoveries.labels(outcome="success").inc()
             return HydratedState(envelope=winner.envelope, source=HydrationSource.CACHE, cache_warmed=False)
 
     def checkpoint(self, state: SalesState, *, expected_version: int, event_watermark: int) -> None:

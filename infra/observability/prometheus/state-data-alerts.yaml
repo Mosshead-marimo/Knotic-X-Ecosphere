@@ -1,0 +1,33 @@
+groups:
+  - name: knotic-state-data
+    rules:
+      - alert: StateCacheLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(knotic_state_load_duration_seconds_bucket{source="cache",outcome="success"}[5m]))) > 0.075
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Cache-backed state load p95 exceeds 75 ms"}
+      - alert: StateRecoveryLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(knotic_state_load_duration_seconds_bucket{source="durable",outcome="success"}[5m]))) > 0.300
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Durable state recovery p95 exceeds 300 ms"}
+      - alert: StateCacheHitRateLow
+        expr: sum(rate(knotic_state_cache_reads_total{status="hit"}[15m])) / clamp_min(sum(rate(knotic_state_cache_reads_total[15m])), 0.000001) < 0.95
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "State cache hit ratio is below 95 percent"}
+      - alert: StateConflictRateHigh
+        expr: sum(rate(knotic_state_conflicts_total[10m])) / clamp_min(sum(rate(knotic_state_loads_total[10m])), 0.000001) > 0.02
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "State conflict ratio exceeds 2 percent"}
+      - alert: StateRecoveryFailuresHigh
+        expr: sum(rate(knotic_state_recoveries_total{outcome="failure"}[10m])) / clamp_min(sum(rate(knotic_state_recoveries_total[10m])), 0.000001) > 0.01
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "Durable state recovery failure ratio exceeds 1 percent"}
+      - alert: DatabasePoolSaturationHigh
+        expr: knotic_db_pool_saturation_ratio > 0.80
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Database pool saturation exceeds 80 percent"}

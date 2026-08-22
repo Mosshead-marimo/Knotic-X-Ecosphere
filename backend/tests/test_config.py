@@ -18,6 +18,7 @@ VALID_SECRETS = {
     "KNOTIC_MCP_AUTH_TOKEN": "a" * 40,
     "KNOTIC_AGORA_APP_CERTIFICATE": "b" * 32,
     "KNOTIC_SESSION_SECURITY_KEY": "c" * 32,
+    "KNOTIC_METRICS_AUTH_TOKEN": "d" * 32,
 }
 VALID_ENVIRONMENT = {
     "KNOTIC_ENV": "development",
@@ -26,6 +27,7 @@ VALID_ENVIRONMENT = {
     "KNOTIC_MCP_BASE_URL": "http://mcp.internal:8090",
     "KNOTIC_AGORA_APP_ID": "0123456789abcdef0123456789abcdef",
     "KNOTIC_ALLOWED_ORIGINS": '["http://localhost:3000"]',
+    "KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel.internal:4318",
 }
 
 
@@ -82,6 +84,19 @@ class BackendSettingsTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             with self.assertRaises(ValidationError):
                 load_backend_settings(secret_provider=MappingSecretProvider(VALID_SECRETS))
+
+    def test_managed_environment_requires_observability_delivery_controls(self) -> None:
+        environment = {
+            **VALID_ENVIRONMENT,
+            "KNOTIC_ENV": "production",
+            "KNOTIC_ALLOWED_ORIGINS": '["https://sales.example.com"]',
+        }
+        environment.pop("KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT")
+        secrets = {name: value for name, value in VALID_SECRETS.items() if name != "KNOTIC_METRICS_AUTH_TOKEN"}
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(ValidationError, "KNOTIC_METRICS_AUTH_TOKEN"):
+                load_backend_settings(secret_provider=MappingSecretProvider(secrets))
 
     def test_process_entrypoint_fails_fast_with_safe_error(self) -> None:
         stderr = io.StringIO()

@@ -41,6 +41,8 @@ Never reuse staging or production secrets across environments. Each environment 
 | `KNOTIC_MCP_AUTH_TOKEN_PREVIOUS` | Secret | Backend, MCP | Only during rotation |
 | `KNOTIC_AGORA_APP_CERTIFICATE` | Secret | Backend | Always |
 | `KNOTIC_SESSION_SECURITY_KEY` | Secret | Backend | Always |
+| `KNOTIC_METRICS_AUTH_TOKEN` | Secret | Backend | Staging/production |
+| `KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT` | Non-secret URL | Backend | Staging/production |
 
 No server-only variable may use a `NEXT_PUBLIC_` prefix or appear in frontend source, assets, generated bundles, browser logs, or client error payloads.
 

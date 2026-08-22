@@ -251,8 +251,19 @@ requirement_changes = session_table(
     sa.Column("new_value", jsonb, nullable=False),
     sa.Column("confirmed", sa.Boolean, nullable=False),
     sa.Column("source_turn_id", uuid, nullable=False),
+    sa.Column("actor_type", sa.Text, nullable=False),
+    sa.Column("actor_id", uuid),
+    sa.Column("source", sa.Text, nullable=False),
     sa.Column("event_id", uuid, nullable=False, unique=True),
     sa.Column("changed_at", sa.DateTime(timezone=True), nullable=False, server_default=utc_now),
+    sa.CheckConstraint(
+        "actor_type in ('CUSTOMER','ASSISTANT','HUMAN_AGENT','SYSTEM','WORKLOAD')",
+        name="valid_actor_type",
+    ),
+    sa.CheckConstraint(
+        "source in ('CUSTOMER_CONFIRMATION','HUMAN_CORRECTION','WORKFLOW_CONFIRMATION')",
+        name="valid_source",
+    ),
     sa.ForeignKeyConstraint(
         ["tenant_id", "requirement_id"], ["requirements_current.tenant_id", "requirements_current.id"]
     ),
@@ -562,8 +573,13 @@ domain_events = session_table(
     sa.Column("correlation_id", uuid, nullable=False),
     sa.Column("causation_id", uuid),
     sa.Column("actor_id", uuid),
+    sa.Column("actor_type", sa.Text, nullable=False),
     sa.Column("payload", jsonb, nullable=False),
     sa.Column("payload_schema_version", sa.Integer, nullable=False),
+    sa.CheckConstraint(
+        "actor_type in ('CUSTOMER','ASSISTANT','HUMAN_AGENT','SYSTEM','WORKLOAD')",
+        name="valid_actor_type",
+    ),
     sa.UniqueConstraint("tenant_id", "session_id", "sequence", "event_type", "event_id"),
 )
 sa.Index(
@@ -572,6 +588,13 @@ sa.Index(
     domain_events.c.session_id,
     domain_events.c.occurred_at,
     domain_events.c.id,
+)
+sa.Index(
+    "uq_domain_events_session_sequence",
+    domain_events.c.tenant_id,
+    domain_events.c.session_id,
+    domain_events.c.sequence,
+    unique=True,
 )
 
 outbox_messages = sa.Table(

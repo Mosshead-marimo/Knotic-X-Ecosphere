@@ -474,6 +474,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting and linting passed; strict mypy passed for all 25 source modules; 19 focused domain/memory tests and the complete 41-test non-integration suite passed. Coverage includes every required field, provenance retention, confirmation precedence, replay, conflict, tenant/session ownership, typed requirement projection, objection revision, serialization, transition, and the reviewed schema snapshot. API, data-model, MCP, operations-document, repository-secret, and whitespace validators passed. The host has Node 22 instead of the repository-pinned Node 24, so JavaScript validators were invoked directly; pinned-runtime enforcement remains covered by CI.
 - Follow-up: Continue with `P1-T007` to make confirmed requirement replacements, revision history, and `requirement.updated` events one atomic durable operation.
 
+### 2026-08-22 — Implemented requirement revision and event history
+
+- Phase: 1 (`P1-T007`, GitHub #27)
+- Status: Added
+- Files: requirement/source domain vocabulary, durable requirement/event repositories, PostgreSQL head metadata, Alembic revision `20260822_0003`, migration/repository integration tests, backend documentation, Phase 1 task status
+- Summary: Added one serialized and atomic durable operation for latest-confirmed requirement replacement, immutable old/new revision history, and ordered `requirement.updated` event creation. Revision rows and events retain actor, source, source-turn, causation, correlation, and version metadata. Exact source-turn replays return the original event without duplication; conflicting replays, unconfirmed values, invalid identities, stale versions, and concurrent losing corrections fail closed. Added a unique per-session event-sequence boundary and a compatibility migration that handles both historical release-0002 databases and fresh databases created through the repository's legacy live-metadata initial migration.
+- Verification: Ruff formatting/linting, strict mypy, and Alembic one-head validation passed. Seven real-PostgreSQL tests passed for the FR-05 `50 -> 250` example, current value, ordered old/new history, event payload and actor/source metadata, exact replay, conflicting replay, simultaneous corrections with exactly one winner, transaction rollback, tenant scoping, fresh migration, populated release-0002 upgrade, downgrade, re-upgrade, RLS, constraints, and query plans. The complete suite passed 55 tests against the pinned PostgreSQL 17/pgvector and Redis 8.8.1 containers.
+- Follow-up: Continue with `P1-T008` to hydrate cache misses from durable state, checkpoint watermarks, migrate projection versions, and recover after cache/process loss.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

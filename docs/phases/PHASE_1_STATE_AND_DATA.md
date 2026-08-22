@@ -53,7 +53,7 @@ Build reliable conversation state with clear consistency, history, recovery, pri
 - Acceptance: Raw transcript is never the sole source of memory; confirmed structured values have provenance and confidence.
 - Verify: Table-driven merge and regression tests.
 
-### [ ] P1-T007 — Implement requirement revision and event history
+### [x] P1-T007 — Implement requirement revision and event history
 
 - Dependencies: P1-T006.
 - Implement: Latest-confirmed-value rule, immutable revisions, `REQUIREMENT_UPDATED` events, actor/source metadata, and conflict handling.

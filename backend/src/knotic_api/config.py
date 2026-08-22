@@ -18,6 +18,7 @@ _REQUIRED_SECRETS = {
 }
 _OPTIONAL_SECRETS = {
     "previous_mcp_auth_token": "KNOTIC_MCP_AUTH_TOKEN_PREVIOUS",
+    "metrics_auth_token": "KNOTIC_METRICS_AUTH_TOKEN",
 }
 _PLACEHOLDERS = ("change-me", "replace-me", "example-only", "insert-secret")
 
@@ -57,6 +58,8 @@ class BackendSettings(CommonSettings):
     previous_mcp_auth_token: SecretStr | None = None
     agora_app_certificate: SecretStr
     session_security_key: SecretStr
+    metrics_auth_token: SecretStr | None = None
+    otel_exporter_otlp_endpoint: str | None = Field(default=None, validation_alias="KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT")
 
     @field_validator("mcp_base_url")
     @classmethod
@@ -104,6 +107,21 @@ class BackendSettings(CommonSettings):
     def validate_session_security_key(cls, value: SecretStr) -> SecretStr:
         return _validate_secret("KNOTIC_SESSION_SECURITY_KEY", value, 32)
 
+    @field_validator("metrics_auth_token")
+    @classmethod
+    def validate_metrics_auth_token(cls, value: SecretStr | None) -> SecretStr | None:
+        return _validate_secret("KNOTIC_METRICS_AUTH_TOKEN", value, 32) if value is not None else None
+
+    @field_validator("otel_exporter_otlp_endpoint")
+    @classmethod
+    def validate_otel_endpoint(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT must be an absolute HTTP(S) URL")
+        return value.rstrip("/")
+
     @model_validator(mode="after")
     def validate_managed_environment(self) -> "BackendSettings":
         if self.environment in {RuntimeEnvironment.STAGING, RuntimeEnvironment.PRODUCTION}:
@@ -116,6 +134,10 @@ class BackendSettings(CommonSettings):
             ]
             if invalid:
                 raise ValueError("managed-environment origins must be explicit HTTPS origins")
+            if self.metrics_auth_token is None:
+                raise ValueError("KNOTIC_METRICS_AUTH_TOKEN is required in staging and production")
+            if self.otel_exporter_otlp_endpoint is None:
+                raise ValueError("KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT is required in staging and production")
         return self
 
 

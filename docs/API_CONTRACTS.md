@@ -207,11 +207,12 @@ Version 1 event types are:
 - `turn.completed`
 - `response.interrupted`
 - `requirement.updated`
+- `memory.updated`
 - `qualification.updated`
 - `operation.updated`
 - `session.ended`
 
-`requirement.updated` always includes the field plus old/new values and explicit confirmation. `response.interrupted` includes `response_id`, played/truncated offsets, detection timestamp, and reason. `operation.updated` never claims provider success unless its status is `SUCCEEDED` after validated confirmation.
+`requirement.updated` always includes the field plus old/new values and explicit confirmation. `memory.updated` carries a confirmed non-requirement structured-memory change plus source-turn provenance; uncertain claims never emit it. `response.interrupted` includes `response_id`, played/truncated offsets, detection timestamp, and reason. `operation.updated` never claims provider success unless its status is `SUCCEEDED` after validated confirmation.
 
 Events are immutable. Consumers ignore unknown event types only when they have opted into forward-compatible projection behavior; exhaustive business consumers must stop and alert. A breaking payload change requires `event_version: 2` or a new event type, with dual-publish/migration documented by the compatibility policy.
 

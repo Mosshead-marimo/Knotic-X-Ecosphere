@@ -252,6 +252,10 @@ class DomainEvent(DomainModel):
             required = {"field", "old_value", "new_value", "confirmed"}
             if not required.issubset(self.payload) or self.payload.get("confirmed") is not True:
                 raise ValueError("requirement.updated requires confirmed old/new value payload")
+        if self.event_type == EventType.MEMORY_UPDATED:
+            required = {"field", "old_value", "new_value", "confirmed", "source_turn_id"}
+            if not required.issubset(self.payload) or self.payload.get("confirmed") is not True:
+                raise ValueError("memory.updated requires confirmed old/new value and provenance")
         return self
 
 

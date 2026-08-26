@@ -13,7 +13,7 @@ for (const entity of ["tenants", "actors", "leads", "sales_sessions", "calls", "
 
 for (const state of ["session_id", "customer", "company", "role", "users", "use cases", "integrations", "budget", "timeline", "objections", "competitors", "current topic/intent", "buying stage", "qualification", "next action", "recent messages", "tool calls/results", "conversation summary", "outcome"]) requireText(state, "missing SalesState authority");
 
-for (const event of ["session.created", "turn.accepted", "turn.completed", "response.interrupted", "requirement.updated", "qualification.updated", "operation.updated", "session.ended"]) requireText(event, "missing event lifecycle");
+for (const event of ["session.created", "turn.accepted", "turn.completed", "response.interrupted", "requirement.updated", "memory.updated", "qualification.updated", "operation.updated", "session.ended"]) requireText(event, "missing event lifecycle");
 
 for (const requirement of ["FR-04", "FR-05", "FR-11", "FR-12", "FR-13", "FR-14"]) requireText(`| ${requirement} `, "missing requirement trace");
 

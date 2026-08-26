@@ -25,7 +25,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: All FR-06 intents are representable; invalid model output cannot mutate state.
 - Verify: Golden conversation set, malformed-output, multilingual/accent, and adversarial tests.
 
-### [ ] P2-T003 — Implement memory update graph node
+### [x] P2-T003 — Implement memory update graph node
 
 - Dependencies: P1-T006, P1-T007, P2-T002.
 - Implement: Apply confirmed extractions to structured memory, preserve uncertain claims separately, emit events, and maintain current topic.

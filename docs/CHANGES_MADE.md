@@ -528,6 +528,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/security linting and strict mypy passed across 35 backend source modules. All 55 non-integration repository tests passed. Four focused understanding tests covered the complete FR-06 inventory, Spanish and accented-English fixtures, an adversarial prompt-injection fixture, entity type/span/ambiguity validation, forbidden model-controlled fields, malformed-output non-mutation, graph integration, non-retained structured Responses calls, and trusted provenance attachment.
 - Follow-up: Run the versioned golden set against the deployment account/model during `P2-T010`; implement deterministic confirmed-versus-uncertain memory application in `P2-T003`.
 
+### 2026-08-26 — Implemented the memory update graph node
+
+- Phase: 2 (`P2-T003`, GitHub #45)
+- Status: Added
+- Files: deterministic memory graph node, uncertain-claim/checkpoint contracts, `memory.updated` domain/API event, graph composition, schema snapshot, workflow tests, API/data-model documentation and validators, backend documentation, Phase 2 task status
+- Summary: Added a pure memory node that converts only explicit, unambiguous entity proposals at confidence 0.85 or higher into confirmed structured facts. Inferred, ambiguous, and low-confidence proposals are preserved separately with value, confidence, reason, and source-turn time and cannot displace confirmed state. Confirmed facts use replay-stable derived UUIDv7 identifiers, existing confirmation/revision precedence, typed budget/list/user values, and automatic customer projection initialization. Accepted requirement and non-requirement changes emit ordered `requirement.updated` or new `memory.updated` events with old/new values and provenance, while checkpoint state and event watermarks advance together. Current topic is derived deterministically from validated intent and is retained across ambiguous turns.
+- Verification: Ruff formatting/security linting and strict mypy passed across 36 backend source modules. All 58 non-integration repository tests passed. Three focused node tests covered the FR-05 `50 -> 250` revision, event history and watermark order, topic updates, exact replay without duplicate events, ambiguous/inferred preservation, confirmed-value protection, and missing-provenance failure. The reviewed domain schema snapshot, 9-event OpenAPI contract, API validator, data-model lifecycle validator, repository-secret scan, and whitespace checks passed.
+- Follow-up: Persist the emitted event batch atomically with graph checkpoints in `P2-T009`; implement nonlinear intent/topic routing in `P2-T004`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

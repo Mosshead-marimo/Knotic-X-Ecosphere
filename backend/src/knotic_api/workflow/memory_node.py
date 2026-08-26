@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 from decimal import Decimal, InvalidOperation
 from typing import Literal
-from uuid import UUID
 
 from knotic_api.domain import Customer, DomainEvent, EventType, MemoryFact, MemoryField
 from knotic_api.domain.memory import MemoryConflict, merge_memory_fact
@@ -26,20 +24,10 @@ from .contracts import (
     validate_graph_state,
     validate_node_update,
 )
+from .identifiers import derived_uuid7
 from .routing import select_route
 
 CONFIRMED_ENTITY_CONFIDENCE = 0.85
-
-
-def _derived_uuid7(source: UUID, purpose: str) -> UUID:
-    timestamp = source.int >> 80
-    random_bits = int.from_bytes(hashlib.sha256(source.bytes + purpose.encode()).digest(), "big") & ((1 << 74) - 1)
-    value = timestamp << 80
-    value |= 0x7 << 76
-    value |= ((random_bits >> 62) & 0xFFF) << 64
-    value |= 0b10 << 62
-    value |= random_bits & ((1 << 62) - 1)
-    return UUID(int=value)
 
 
 def _memory_value(entity: ExtractedEntity) -> str | int | Decimal | tuple[str, ...]:
@@ -82,7 +70,7 @@ def _proposal(state: SalesGraphState, entity: ExtractedEntity) -> MemoryFact:
     return MemoryFact(
         fact_id=current.fact_id
         if current is not None and replay
-        else _derived_uuid7(turn.turn_id, f"memory:{field.value}"),
+        else derived_uuid7(turn.turn_id, f"memory:{field.value}"),
         tenant_id=sales_state.tenant_id,
         session_id=sales_state.session_id,
         field=field,
@@ -108,7 +96,7 @@ def _topic_proposal(state: SalesGraphState, route: SalesRoute) -> MemoryFact:
     return MemoryFact(
         fact_id=current.fact_id
         if current is not None and replay
-        else _derived_uuid7(turn.turn_id, "memory:current_topic"),
+        else derived_uuid7(turn.turn_id, "memory:current_topic"),
         tenant_id=sales_state.tenant_id,
         session_id=sales_state.session_id,
         field=MemoryField.CURRENT_TOPIC,
@@ -143,7 +131,7 @@ def _event(state: SalesGraphState, fact: MemoryFact, replaced: MemoryFact | None
         "source_turn_id": str(fact.source_turn_id),
     }
     return DomainEvent(
-        event_id=_derived_uuid7(fact.source_turn_id, f"event:{fact.field.value}"),
+        event_id=derived_uuid7(fact.source_turn_id, f"event:{fact.field.value}"),
         event_type=event_type,
         occurred_at=fact.captured_at,
         tenant_id=fact.tenant_id,

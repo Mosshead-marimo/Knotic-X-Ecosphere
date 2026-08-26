@@ -39,7 +39,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Every FR-06 intent reaches an allowed path; routing is reproducible from state and turn evidence.
 - Verify: Route matrix and multi-topic conversation tests.
 
-### [ ] P2-T005 — Implement objection detection and policy
+### [x] P2-T005 — Implement objection detection and policy
 
 - Dependencies: P2-T002.
 - Implement: Detect every FR-07 category, store evidence/history, select approved handling policy, and escalate high-risk security/legal/trust cases.

@@ -256,6 +256,18 @@ class DomainEvent(DomainModel):
             required = {"field", "old_value", "new_value", "confirmed", "source_turn_id"}
             if not required.issubset(self.payload) or self.payload.get("confirmed") is not True:
                 raise ValueError("memory.updated requires confirmed old/new value and provenance")
+        if self.event_type == EventType.OBJECTION_UPDATED:
+            required = {
+                "objection_id",
+                "category",
+                "status",
+                "policy_action",
+                "escalation_required",
+                "source_turn_id",
+                "evidence_sha256",
+            }
+            if not required.issubset(self.payload):
+                raise ValueError("objection.updated requires category, policy, escalation, and provenance")
         return self
 
 

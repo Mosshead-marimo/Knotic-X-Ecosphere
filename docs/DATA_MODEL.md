@@ -58,6 +58,7 @@ OIDC authorization codes, access tokens, refresh tokens, PKCE verifiers, Agora t
 | `requirements_current` | `id`, `tenant_id`, `session_id`, `field`, typed value columns (`value_integer`, `value_text`, `value_text_array`, `value_numeric`, `currency`), `confirmed_at`, `confidence`, `source_turn_id`, timestamps/version | unique `(tenant_id,session_id,field)`; exactly one value representation allowed; confidence `0..1` | Deleted with session after history retention |
 | `requirement_changes` | `id`, `tenant_id`, `session_id`, `requirement_id`, `field`, typed old/new values, `confirmed`, `source_turn_id`, actor/source metadata, `event_id`, `changed_at` | unique `event_id`; index `(tenant_id,session_id,changed_at,id)` | Immutable; same retention as durable events |
 | `objections` | `id`, `tenant_id`, `session_id`, `category`, encrypted detail, `status`, first/latest turn IDs, timestamps/version | unique active category per session; index `(tenant_id,session_id,status,category)` | Same as session |
+| `objection_evidence` | `id`, tenant/session/objection/source-turn IDs, category, exact offsets, evidence SHA-256, confidence, risk flags, policy action, escalation decision, detected/created times | unique `(tenant_id,session_id,objection_id,source_turn_id)`; index `(tenant_id,session_id,category,detected_at,id)`; immutable runtime history | Same as session |
 | `session_competitors` | `id`, `tenant_id`, `session_id`, normalized name, encrypted context, timestamps/version | unique `(tenant_id,session_id,normalized_name)` | Same as session |
 | `qualification_snapshots` | `id`, `tenant_id`, `session_id`, seven constrained component scores, `total_score`, `buying_stage`, explicit override/action, source turn, `calculated_at` | check component sum equals total; index `(tenant_id,session_id,calculated_at,id)` | Immutable; same as session |
 
@@ -102,6 +103,7 @@ Version 1 event lifecycle ownership is explicit:
 | `response.interrupted` | durably accepted voice cancellation | `messages` interruption fields and event timing payload |
 | `requirement.updated` | atomic confirmed requirement replacement | `requirements_current` plus `requirement_changes` old/new values |
 | `memory.updated` | committed confirmed non-requirement memory change | `leads`, `session_competitors`, or `sales_sessions` current topic plus source turn |
+| `objection.updated` | committed objection detection or repeated evidence | `objections` current state plus immutable `objection_evidence` provenance |
 | `qualification.updated` | deterministic score/stage calculation | `qualification_snapshots` |
 | `operation.updated` | every accepted operation transition | `operations` and referenced business record |
 | `session.ended` | terminal session/outcome commit | `sales_sessions` plus `session_outcomes` |
@@ -205,6 +207,7 @@ Deletion requests create an audited erasure job. New processing is blocked, prov
 |---|---|
 | FR-04 structured memory | `sales_sessions`, `leads`, `requirements_current`, `objections`, `session_competitors`, `qualification_snapshots`, `messages`, tool tables; Redis is a rebuildable projection |
 | FR-05 requirement revision | Atomic `requirements_current` replacement + immutable `requirement_changes` + `requirement.updated` event with old/new values |
+| FR-07 objections | Nine-category `objections` current view + immutable `objection_evidence` + approved policy/escalation in `objection.updated` |
 | FR-11 CRM | `leads`, `provider_links`, `tool_calls/results`, `pending_provider_updates`; provider confirmation remains external truth |
 | FR-12 calendar | `meetings` with selected slot, idempotency, explicit pending confirmation, and validated provider confirmation |
 | FR-13 human escalation | `handoffs` with encrypted structured context, reason, policy/approval, assignment, provider reference, and audit event |

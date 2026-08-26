@@ -12,6 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from .contracts import NODE_CONTRACTS, SalesGraphState, StateUpdate, WorkflowNode, validate_node_update
 from .memory_node import update_memory_node
+from .routing import ROUTE_NODES, route_destination, route_turn_node
 from .understanding import TurnUnderstandingPort, understand_turn_node
 
 
@@ -30,20 +31,38 @@ def build_sales_graph(
     """Build the authoritative, side-effect-free Phase 2 contract topology."""
 
     builder = StateGraph(SalesGraphState)
-    ordered = tuple(WorkflowNode)
-    for node in ordered:
+    for node in WorkflowNode:
         action = (
             partial(understand_turn_node, port=understanding_port)
             if node == WorkflowNode.UNDERSTAND_TURN and understanding_port is not None
             else update_memory_node
             if node == WorkflowNode.UPDATE_MEMORY
+            else route_turn_node
+            if node == WorkflowNode.ROUTE_TURN
             else _contract_node(node)
         )
         builder.add_node(node.value, cast(Any, action))
-    builder.add_edge(START, ordered[0].value)
-    for current, following in pairwise(ordered):
+    before_route = (
+        WorkflowNode.RECEIVE_TURN,
+        WorkflowNode.UNDERSTAND_TURN,
+        WorkflowNode.UPDATE_MEMORY,
+        WorkflowNode.DETECT_INTENT,
+        WorkflowNode.DETECT_OBJECTION,
+        WorkflowNode.ROUTE_TURN,
+    )
+    builder.add_edge(START, before_route[0].value)
+    for current, following in pairwise(before_route):
         builder.add_edge(current.value, following.value)
-    builder.add_edge(ordered[-1].value, END)
-    if set(NODE_CONTRACTS) != set(ordered):
+    builder.add_conditional_edges(
+        WorkflowNode.ROUTE_TURN.value,
+        cast(Any, route_destination),
+        {route.value: node.value for route, node in ROUTE_NODES.items()},
+    )
+    for route_node in ROUTE_NODES.values():
+        builder.add_edge(route_node.value, WorkflowNode.UPDATE_QUALIFICATION.value)
+    builder.add_edge(WorkflowNode.UPDATE_QUALIFICATION.value, WorkflowNode.NEXT_BEST_ACTION.value)
+    builder.add_edge(WorkflowNode.NEXT_BEST_ACTION.value, WorkflowNode.GENERATE_RESPONSE.value)
+    builder.add_edge(WorkflowNode.GENERATE_RESPONSE.value, END)
+    if set(NODE_CONTRACTS) != set(WorkflowNode):
         raise RuntimeError("every graph node must have exactly one mutation contract")
     return builder.compile(name="knotic-sales-workflow-v1")

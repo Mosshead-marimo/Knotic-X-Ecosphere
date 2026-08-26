@@ -89,5 +89,5 @@ def test_graph_compiles_with_stable_node_and_edge_inventory() -> None:
     graph = build_sales_graph()
     rendered = graph.get_graph()
     assert set(rendered.nodes) == {"__start__", "__end__", *(node.value for node in WorkflowNode)}
-    assert len(rendered.edges) == len(WorkflowNode) + 1
+    assert len(rendered.edges) == 35
     assert graph.name == "knotic-sales-workflow-v1"

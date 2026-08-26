@@ -9,8 +9,11 @@ from .contracts import (
     NodeKind,
     SalesGraphState,
     SalesIntent,
+    SalesRoute,
     SemanticTurn,
     StateUpdate,
+    TopicControl,
+    TopicFrame,
     TurnUnderstanding,
     UncertainClaim,
     WorkflowError,
@@ -21,9 +24,12 @@ from .contracts import (
 )
 from .graph import build_sales_graph
 from .memory_node import update_memory_node
+from .routing import INTENT_ROUTES, ROUTE_NODES, route_destination, route_turn_node, select_route
 from .understanding import OpenAITurnUnderstanding, TurnUnderstandingPort, understand_turn_node
 
 __all__ = [
+    "INTENT_ROUTES",
+    "ROUTE_NODES",
     "CheckpointIdentity",
     "ExtractableField",
     "ExtractedEntity",
@@ -33,8 +39,11 @@ __all__ = [
     "OpenAITurnUnderstanding",
     "SalesGraphState",
     "SalesIntent",
+    "SalesRoute",
     "SemanticTurn",
     "StateUpdate",
+    "TopicControl",
+    "TopicFrame",
     "TurnUnderstanding",
     "TurnUnderstandingPort",
     "UncertainClaim",
@@ -42,6 +51,9 @@ __all__ = [
     "WorkflowErrorCode",
     "WorkflowNode",
     "build_sales_graph",
+    "route_destination",
+    "route_turn_node",
+    "select_route",
     "understand_turn_node",
     "update_memory_node",
     "validate_graph_state",

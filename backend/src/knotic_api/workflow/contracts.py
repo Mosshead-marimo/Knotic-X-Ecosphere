@@ -18,6 +18,19 @@ class WorkflowNode(StrEnum):
     DETECT_INTENT = "detect_intent"
     DETECT_OBJECTION = "detect_objection"
     ROUTE_TURN = "route_turn"
+    HANDLE_DISCOVERY = "handle_discovery"
+    HANDLE_PRICING = "handle_pricing"
+    HANDLE_PRODUCT_QUESTION = "handle_product_question"
+    HANDLE_COMPETITOR_COMPARISON = "handle_competitor_comparison"
+    HANDLE_OBJECTION = "handle_objection"
+    HANDLE_CHANGE_REQUIREMENT = "handle_change_requirement"
+    HANDLE_DEMO_REQUEST = "handle_demo_request"
+    HANDLE_BOOKING = "handle_booking"
+    HANDLE_FOLLOWUP = "handle_followup"
+    HANDLE_HUMAN_HANDOFF = "handle_human_handoff"
+    HANDLE_GENERAL_QUESTION = "handle_general_question"
+    HANDLE_CLOSING = "handle_closing"
+    HANDLE_CLARIFICATION = "handle_clarification"
     UPDATE_QUALIFICATION = "update_qualification"
     NEXT_BEST_ACTION = "next_best_action"
     GENERATE_RESPONSE = "generate_response"
@@ -56,6 +69,28 @@ class SalesIntent(StrEnum):
 class AssertionStrength(StrEnum):
     EXPLICIT = "EXPLICIT"
     INFERRED = "INFERRED"
+
+
+class TopicControl(StrEnum):
+    CONTINUE = "CONTINUE"
+    SWITCH = "SWITCH"
+    RETURN_PREVIOUS = "RETURN_PREVIOUS"
+
+
+class SalesRoute(StrEnum):
+    DISCOVERY = "DISCOVERY"
+    PRICING = "PRICING"
+    PRODUCT_QUESTION = "PRODUCT_QUESTION"
+    COMPETITOR_COMPARISON = "COMPETITOR_COMPARISON"
+    OBJECTION = "OBJECTION"
+    CHANGE_REQUIREMENT = "CHANGE_REQUIREMENT"
+    DEMO_REQUEST = "DEMO_REQUEST"
+    BOOKING = "BOOKING"
+    FOLLOWUP = "FOLLOWUP"
+    HUMAN_HANDOFF = "HUMAN_HANDOFF"
+    GENERAL_QUESTION = "GENERAL_QUESTION"
+    CLOSING = "CLOSING"
+    CLARIFICATION = "CLARIFICATION"
 
 
 class ExtractableField(StrEnum):
@@ -148,6 +183,7 @@ class ModelTurnUnderstanding(ContractModel):
     intent: SalesIntent
     intent_confidence: float = Field(ge=0, le=1)
     entities: tuple[ExtractedEntity, ...] = ()
+    topic_control: TopicControl = TopicControl.SWITCH
     ambiguous: bool
     ambiguity_reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)] | None = (
         None
@@ -190,6 +226,13 @@ class UncertainClaim(ContractModel):
     reason: Literal["AMBIGUOUS_TURN", "INFERRED", "LOW_CONFIDENCE"]
 
 
+class TopicFrame(ContractModel):
+    route: SalesRoute
+    intent: SalesIntent
+    source_turn_id: UUID7
+    entered_at: AwareDatetime
+
+
 class WorkflowError(ContractModel):
     code: WorkflowErrorCode
     safe_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -205,7 +248,8 @@ class SalesGraphState(TypedDict):
     understanding: NotRequired[TurnUnderstanding | None]
     uncertain_claims: NotRequired[tuple[UncertainClaim, ...]]
     emitted_events: NotRequired[tuple[DomainEvent, ...]]
-    route: NotRequired[str | None]
+    route: NotRequired[SalesRoute | None]
+    topic_history: NotRequired[tuple[TopicFrame, ...]]
     objection_decision: NotRequired[object | None]
     workflow_error: NotRequired[WorkflowError | None]
 
@@ -217,7 +261,8 @@ class StateUpdate(TypedDict, total=False):
     understanding: TurnUnderstanding | None
     uncertain_claims: tuple[UncertainClaim, ...]
     emitted_events: tuple[DomainEvent, ...]
-    route: str | None
+    route: SalesRoute | None
+    topic_history: tuple[TopicFrame, ...]
     objection_decision: object | None
     workflow_error: WorkflowError | None
 
@@ -281,7 +326,7 @@ NODE_CONTRACTS: dict[WorkflowNode, NodeContract] = {
     WorkflowNode.ROUTE_TURN: NodeContract(
         node=WorkflowNode.ROUTE_TURN,
         kind=NodeKind.PURE,
-        allowed_mutations=frozenset({"route", "workflow_error"}),
+        allowed_mutations=frozenset({"route", "topic_history", "workflow_error"}),
         description="Choose one approved route from validated turn evidence and state.",
     ),
     WorkflowNode.UPDATE_QUALIFICATION: NodeContract(
@@ -303,6 +348,28 @@ NODE_CONTRACTS: dict[WorkflowNode, NodeContract] = {
         description="Generate and validate grounded response content through the model port.",
     ),
 }
+
+for _route_node in {
+    WorkflowNode.HANDLE_DISCOVERY,
+    WorkflowNode.HANDLE_PRICING,
+    WorkflowNode.HANDLE_PRODUCT_QUESTION,
+    WorkflowNode.HANDLE_COMPETITOR_COMPARISON,
+    WorkflowNode.HANDLE_OBJECTION,
+    WorkflowNode.HANDLE_CHANGE_REQUIREMENT,
+    WorkflowNode.HANDLE_DEMO_REQUEST,
+    WorkflowNode.HANDLE_BOOKING,
+    WorkflowNode.HANDLE_FOLLOWUP,
+    WorkflowNode.HANDLE_HUMAN_HANDOFF,
+    WorkflowNode.HANDLE_GENERAL_QUESTION,
+    WorkflowNode.HANDLE_CLOSING,
+    WorkflowNode.HANDLE_CLARIFICATION,
+}:
+    NODE_CONTRACTS[_route_node] = NodeContract(
+        node=_route_node,
+        kind=NodeKind.PURE,
+        allowed_mutations=frozenset(),
+        description="Typed route boundary; later tasks attach only the approved route behavior.",
+    )
 
 
 class InvalidNodeUpdate(ValueError):

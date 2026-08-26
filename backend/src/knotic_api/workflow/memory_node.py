@@ -16,6 +16,7 @@ from .contracts import (
     ExtractableField,
     ExtractedEntity,
     SalesGraphState,
+    SalesRoute,
     StateUpdate,
     UncertainClaim,
     WorkflowError,
@@ -25,6 +26,7 @@ from .contracts import (
     validate_graph_state,
     validate_node_update,
 )
+from .routing import select_route
 
 CONFIRMED_ENTITY_CONFIDENCE = 0.85
 
@@ -95,7 +97,7 @@ def _proposal(state: SalesGraphState, entity: ExtractedEntity) -> MemoryFact:
     )
 
 
-def _topic_proposal(state: SalesGraphState) -> MemoryFact:
+def _topic_proposal(state: SalesGraphState, route: SalesRoute) -> MemoryFact:
     sales_state = state["sales_state"]
     turn = state["turn"]
     understanding = state["understanding"]
@@ -110,7 +112,7 @@ def _topic_proposal(state: SalesGraphState) -> MemoryFact:
         tenant_id=sales_state.tenant_id,
         session_id=sales_state.session_id,
         field=MemoryField.CURRENT_TOPIC,
-        value=understanding.intent.value.casefold(),
+        value=route.value.casefold(),
         confirmed=True,
         confidence=understanding.intent_confidence,
         source_turn_id=turn.turn_id,
@@ -184,8 +186,9 @@ def update_memory_node(state: SalesGraphState) -> StateUpdate:
             claim = _uncertain(entity, validated)
             if not any(item.field == claim.field and item.source_turn_id == claim.source_turn_id for item in uncertain):
                 uncertain.append(claim)
-    if not understanding.ambiguous:
-        proposals.append(_topic_proposal(validated))
+    selected_route = select_route(validated)
+    if selected_route != SalesRoute.CLARIFICATION:
+        proposals.append(_topic_proposal(validated, selected_route))
 
     for proposal in proposals:
         if (
@@ -210,6 +213,9 @@ def update_memory_node(state: SalesGraphState) -> StateUpdate:
             sequence = validated["checkpoint"].event_watermark + len(emitted) + 1
             emitted.append(_event(validated, proposal, result.replaced, sequence))
             current = result.state
+
+    if selected_route != SalesRoute.CLARIFICATION and current.current_intent != understanding.intent.value:
+        current = current.model_copy(update={"current_intent": understanding.intent.value})
 
     checkpoint = CheckpointIdentity(
         tenant_id=current.tenant_id,

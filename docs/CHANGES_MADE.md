@@ -537,6 +537,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/security linting and strict mypy passed across 36 backend source modules. All 58 non-integration repository tests passed. Three focused node tests covered the FR-05 `50 -> 250` revision, event history and watermark order, topic updates, exact replay without duplicate events, ambiguous/inferred preservation, confirmed-value protection, and missing-provenance failure. The reviewed domain schema snapshot, 9-event OpenAPI contract, API validator, data-model lifecycle validator, repository-secret scan, and whitespace checks passed.
 - Follow-up: Persist the emitted event batch atomically with graph checkpoints in `P2-T009`; implement nonlinear intent/topic routing in `P2-T004`.
 
+### 2026-08-26 — Implemented deterministic intent routing and nonlinear topic control
+
+- Phase: 2 (`P2-T004`, GitHub #46)
+- Status: Added
+- Files: route/topic-control contracts, deterministic routing node, conditional LangGraph topology, route matrix and multi-topic tests, prompt policy, memory-topic integration, backend documentation, Phase 2 task status
+- Summary: Added a closed route for every FR-06 intent plus a safe clarification route. The compiled LangGraph now conditionally dispatches from `route_turn` into 13 typed, no-side-effect branch boundaries and rejoins before qualification. Added explicit `CONTINUE`, `SWITCH`, and `RETURN_PREVIOUS` controls backed by a typed 32-frame topic history. Routing uses only validated understanding and graph state: ambiguity, missing prior topics, or impossible return requests choose clarification; successful returns search prior distinct frames deterministically. Memory topic updates use the same route decision, so continuing a topic cannot be overwritten by a nested general question.
+- Verification: Ruff formatting/security linting and strict mypy passed across 37 backend source modules. All 73 non-integration repository tests passed. Fifteen focused route tests covered the complete 12-intent matrix, unique route-node ownership, switch/continue/return behavior, missing-history clarification, ambiguous-history preservation, memory/current-topic alignment, and conditional branch/rejoin graph edges. API and data-model validators and whitespace checks passed.
+- Follow-up: Implement objection classification and escalation before route dispatch in `P2-T005`; branch-specific knowledge/action behavior remains scoped to later Phase 2/3 tasks.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

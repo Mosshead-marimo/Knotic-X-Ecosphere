@@ -19,6 +19,7 @@ _REQUIRED_SECRETS = {
 _OPTIONAL_SECRETS = {
     "previous_mcp_auth_token": "KNOTIC_MCP_AUTH_TOKEN_PREVIOUS",
     "metrics_auth_token": "KNOTIC_METRICS_AUTH_TOKEN",
+    "openai_api_key": "KNOTIC_OPENAI_API_KEY",
 }
 _PLACEHOLDERS = ("change-me", "replace-me", "example-only", "insert-secret")
 
@@ -60,6 +61,11 @@ class BackendSettings(CommonSettings):
     session_security_key: SecretStr
     metrics_auth_token: SecretStr | None = None
     otel_exporter_otlp_endpoint: str | None = Field(default=None, validation_alias="KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT")
+    openai_api_key: SecretStr | None = None
+    openai_model: Literal["gpt-5.6-terra"] = Field(default="gpt-5.6-terra", validation_alias="KNOTIC_OPENAI_MODEL")
+    openai_timeout_seconds: float = Field(
+        default=12.0, ge=1.0, le=30.0, validation_alias="KNOTIC_OPENAI_TIMEOUT_SECONDS"
+    )
 
     @field_validator("mcp_base_url")
     @classmethod
@@ -111,6 +117,11 @@ class BackendSettings(CommonSettings):
     @classmethod
     def validate_metrics_auth_token(cls, value: SecretStr | None) -> SecretStr | None:
         return _validate_secret("KNOTIC_METRICS_AUTH_TOKEN", value, 32) if value is not None else None
+
+    @field_validator("openai_api_key")
+    @classmethod
+    def validate_openai_api_key(cls, value: SecretStr | None) -> SecretStr | None:
+        return _validate_secret("KNOTIC_OPENAI_API_KEY", value, 20) if value is not None else None
 
     @field_validator("otel_exporter_otlp_endpoint")
     @classmethod

@@ -18,7 +18,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Every graph node has typed inputs/outputs and explicit allowed state mutations.
 - Verify: Schema and graph-compilation tests.
 
-### [ ] P2-T002 — Implement turn understanding and structured extraction
+### [x] P2-T002 — Implement turn understanding and structured extraction
 
 - Dependencies: P2-T001.
 - Implement: Intent/entity extraction with validated structured output, confidence, provenance, ambiguity handling, and prompt-injection-resistant boundaries.

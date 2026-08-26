@@ -37,6 +37,38 @@ class WorkflowErrorCode(StrEnum):
     POLICY_BLOCKED = "POLICY_BLOCKED"
 
 
+class SalesIntent(StrEnum):
+    DISCOVERY = "DISCOVERY"
+    PRICING = "PRICING"
+    PRODUCT_QUESTION = "PRODUCT_QUESTION"
+    COMPETITOR_COMPARISON = "COMPETITOR_COMPARISON"
+    OBJECTION = "OBJECTION"
+    CHANGE_REQUIREMENT = "CHANGE_REQUIREMENT"
+    DEMO_REQUEST = "DEMO_REQUEST"
+    BOOKING = "BOOKING"
+    FOLLOWUP = "FOLLOWUP"
+    HUMAN_HANDOFF = "HUMAN_HANDOFF"
+    GENERAL_QUESTION = "GENERAL_QUESTION"
+    CLOSING = "CLOSING"
+
+
+class AssertionStrength(StrEnum):
+    EXPLICIT = "EXPLICIT"
+    INFERRED = "INFERRED"
+
+
+class ExtractableField(StrEnum):
+    CUSTOMER_NAME = "customer_name"
+    COMPANY = "company"
+    ROLE = "role"
+    USERS = "users"
+    USE_CASES = "use_cases"
+    INTEGRATIONS = "integrations"
+    BUDGET = "budget"
+    TIMELINE = "timeline"
+    COMPETITORS = "competitors"
+
+
 class ContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
@@ -76,6 +108,73 @@ class SemanticTurn(ContractModel):
     occurred_at: AwareDatetime
 
 
+class ExtractedEntity(ContractModel):
+    field: ExtractableField
+    value: str | int | tuple[str, ...]
+    currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] | None = None
+    confidence: float = Field(ge=0, le=1)
+    assertion: AssertionStrength
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_value_and_span(self) -> ExtractedEntity:
+        if self.end_offset <= self.start_offset:
+            raise ValueError("entity end_offset must be greater than start_offset")
+        if self.field == ExtractableField.USERS and (
+            not isinstance(self.value, int) or isinstance(self.value, bool) or self.value < 1
+        ):
+            raise ValueError("users entity must be a positive integer")
+        collection = self.field in {
+            ExtractableField.USE_CASES,
+            ExtractableField.INTEGRATIONS,
+            ExtractableField.COMPETITORS,
+        }
+        if collection != isinstance(self.value, tuple):
+            raise ValueError("collection entity fields require a tuple value")
+        if self.field == ExtractableField.BUDGET and self.currency is None:
+            raise ValueError("budget entity requires currency")
+        if self.field != ExtractableField.BUDGET and self.currency is not None:
+            raise ValueError("currency is valid only for budget entities")
+        return self
+
+
+class ModelTurnUnderstanding(ContractModel):
+    intent: SalesIntent
+    intent_confidence: float = Field(ge=0, le=1)
+    entities: tuple[ExtractedEntity, ...] = ()
+    ambiguous: bool
+    ambiguity_reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)] | None = (
+        None
+    )
+    clarification_question: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)] | None
+    ) = None
+    language: Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{2,3}$")]
+
+    @model_validator(mode="after")
+    def validate_ambiguity(self) -> ModelTurnUnderstanding:
+        details_present = self.ambiguity_reason is not None and self.clarification_question is not None
+        if self.ambiguous != details_present:
+            raise ValueError("ambiguous output requires a reason and clarification question")
+        fields = [entity.field for entity in self.entities]
+        if len(fields) != len(set(fields)):
+            raise ValueError("model output may contain only one proposal per memory field")
+        return self
+
+
+class TurnUnderstanding(ModelTurnUnderstanding):
+    source_turn_id: UUID7
+    provider_response_id: Annotated[str, StringConstraints(pattern=r"^resp_[A-Za-z0-9_-]{8,128}$")]
+
+    def validate_against(self, turn: SemanticTurn) -> TurnUnderstanding:
+        if self.source_turn_id != turn.turn_id:
+            raise ValueError("understanding provenance must match the source turn")
+        if any(entity.end_offset > len(turn.text) for entity in self.entities):
+            raise ValueError("entity evidence span exceeds the source turn")
+        return self
+
+
 class WorkflowError(ContractModel):
     code: WorkflowErrorCode
     safe_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -88,7 +187,7 @@ class SalesGraphState(TypedDict):
     checkpoint: CheckpointIdentity
     sales_state: SalesState
     turn: SemanticTurn
-    understanding: NotRequired[object | None]
+    understanding: NotRequired[TurnUnderstanding | None]
     uncertain_claims: NotRequired[tuple[object, ...]]
     emitted_events: NotRequired[tuple[DomainEvent, ...]]
     route: NotRequired[str | None]
@@ -100,7 +199,7 @@ class StateUpdate(TypedDict, total=False):
     checkpoint: CheckpointIdentity
     sales_state: SalesState
     turn: SemanticTurn
-    understanding: object | None
+    understanding: TurnUnderstanding | None
     uncertain_claims: tuple[object, ...]
     emitted_events: tuple[DomainEvent, ...]
     route: str | None

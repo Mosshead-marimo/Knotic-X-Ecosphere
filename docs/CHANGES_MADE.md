@@ -519,6 +519,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/linting and strict mypy passed across 32 backend source modules. Three focused tests passed for checkpoint/session identity binding, strict turn schemas, forbidden state mutation rejection, complete node-contract coverage, pure/I/O boundary coverage, stable graph node/edge inventory, and successful LangGraph compilation.
 - Follow-up: Implement `P2-T002` through the typed model port and replace only the `understand_turn` contract node.
 
+### 2026-08-26 — Implemented turn understanding and structured extraction
+
+- Phase: 2 (`P2-T002`, GitHub #44)
+- Status: Added
+- Files: workflow intent/entity/ambiguity contracts, provider-neutral understanding port, OpenAI Responses adapter, injection-resistant prompt policy, golden conversation fixtures/tests, configuration, dependency lock, backend documentation, Phase 2 task status
+- Summary: Added all 12 FR-06 intents, bounded confidence and ambiguity contracts, trusted turn/provider provenance, exact source offsets, typed customer entity proposals, and a strict extraction schema that excludes model control over topic, next action, tools, and outcomes. Added a provider-neutral port and an OpenAI Responses structured-output adapter using the approved `gpt-5.6-terra` model, non-retained requests, zero SDK retries, a 12-second bounded timeout, low reasoning effort, and safe error mapping. Customer utterances are JSON-encoded as explicitly untrusted prompt data; malformed/refused output raises a safe workflow failure before any graph state mutation.
+- Verification: Ruff formatting/security linting and strict mypy passed across 35 backend source modules. All 55 non-integration repository tests passed. Four focused understanding tests covered the complete FR-06 inventory, Spanish and accented-English fixtures, an adversarial prompt-injection fixture, entity type/span/ambiguity validation, forbidden model-controlled fields, malformed-output non-mutation, graph integration, non-retained structured Responses calls, and trusted provenance attachment.
+- Follow-up: Run the versioned golden set against the deployment account/model during `P2-T010`; implement deterministic confirmed-versus-uncertain memory application in `P2-T003`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

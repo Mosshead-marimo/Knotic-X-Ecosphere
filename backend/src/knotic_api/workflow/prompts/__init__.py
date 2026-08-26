@@ -1,0 +1,1 @@
+"""Versioned workflow prompt artifacts."""

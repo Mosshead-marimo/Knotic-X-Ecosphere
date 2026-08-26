@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from enum import StrEnum
 from typing import Annotated, Literal, NotRequired, TypedDict
 
@@ -80,6 +81,7 @@ class CheckpointIdentity(ContractModel):
     session_id: UUID7
     thread_id: Annotated[str, StringConstraints(pattern=r"^sales:[0-9a-f-]{36}:[0-9a-f-]{36}$")]
     state_version: int = Field(ge=1)
+    event_watermark: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_thread_identity(self) -> CheckpointIdentity:
@@ -89,12 +91,13 @@ class CheckpointIdentity(ContractModel):
         return self
 
     @classmethod
-    def for_state(cls, state: SalesState) -> CheckpointIdentity:
+    def for_state(cls, state: SalesState, *, event_watermark: int = 0) -> CheckpointIdentity:
         return cls(
             tenant_id=state.tenant_id,
             session_id=state.session_id,
             thread_id=f"sales:{state.tenant_id}:{state.session_id}",
             state_version=state.version,
+            event_watermark=event_watermark,
         )
 
 
@@ -102,6 +105,8 @@ class SemanticTurn(ContractModel):
     tenant_id: UUID7
     session_id: UUID7
     turn_id: UUID7
+    correlation_id: UUID7
+    actor_id: UUID7
     sequence: int = Field(ge=1)
     text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10_000)]
     locale: Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$")]
@@ -175,6 +180,16 @@ class TurnUnderstanding(ModelTurnUnderstanding):
         return self
 
 
+class UncertainClaim(ContractModel):
+    field: ExtractableField
+    value: str | int | Decimal | tuple[str, ...]
+    currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")] | None = None
+    confidence: float = Field(ge=0, le=1)
+    source_turn_id: UUID7
+    captured_at: AwareDatetime
+    reason: Literal["AMBIGUOUS_TURN", "INFERRED", "LOW_CONFIDENCE"]
+
+
 class WorkflowError(ContractModel):
     code: WorkflowErrorCode
     safe_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -188,7 +203,7 @@ class SalesGraphState(TypedDict):
     sales_state: SalesState
     turn: SemanticTurn
     understanding: NotRequired[TurnUnderstanding | None]
-    uncertain_claims: NotRequired[tuple[object, ...]]
+    uncertain_claims: NotRequired[tuple[UncertainClaim, ...]]
     emitted_events: NotRequired[tuple[DomainEvent, ...]]
     route: NotRequired[str | None]
     objection_decision: NotRequired[object | None]
@@ -200,7 +215,7 @@ class StateUpdate(TypedDict, total=False):
     sales_state: SalesState
     turn: SemanticTurn
     understanding: TurnUnderstanding | None
-    uncertain_claims: tuple[object, ...]
+    uncertain_claims: tuple[UncertainClaim, ...]
     emitted_events: tuple[DomainEvent, ...]
     route: str | None
     objection_decision: object | None
@@ -245,7 +260,7 @@ NODE_CONTRACTS: dict[WorkflowNode, NodeContract] = {
     ),
     WorkflowNode.UPDATE_MEMORY: NodeContract(
         node=WorkflowNode.UPDATE_MEMORY,
-        kind=NodeKind.IO,
+        kind=NodeKind.PURE,
         allowed_mutations=frozenset(
             {"sales_state", "checkpoint", "uncertain_claims", "emitted_events", "workflow_error"}
         ),

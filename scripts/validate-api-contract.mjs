@@ -253,7 +253,7 @@ for (const [reference, value, name] of negativeExamples) {
 const eventTypeSchema = specification.components?.schemas?.DomainEvent?.properties?.event_type;
 const eventTypes = new Set(eventTypeSchema?.enum ?? []);
 const payloadMap = specification["x-event-payload-map"] ?? {};
-record(eventTypes.size === 8, `Expected 8 version 1 event types, found ${eventTypes.size}`);
+record(eventTypes.size === 9, `Expected 9 version 1 event types, found ${eventTypes.size}`);
 record(Object.keys(payloadMap).length === eventTypes.size, "Every event type must have exactly one payload mapping");
 for (const eventType of eventTypes) {
   record(typeof payloadMap[eventType] === "string", `Missing payload schema mapping for ${eventType}`);

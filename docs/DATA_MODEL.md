@@ -101,6 +101,7 @@ Version 1 event lifecycle ownership is explicit:
 | `turn.completed` | committed LangGraph response/state transition | `messages`, `sales_sessions`, related structured tables |
 | `response.interrupted` | durably accepted voice cancellation | `messages` interruption fields and event timing payload |
 | `requirement.updated` | atomic confirmed requirement replacement | `requirements_current` plus `requirement_changes` old/new values |
+| `memory.updated` | committed confirmed non-requirement memory change | `leads`, `session_competitors`, or `sales_sessions` current topic plus source turn |
 | `qualification.updated` | deterministic score/stage calculation | `qualification_snapshots` |
 | `operation.updated` | every accepted operation transition | `operations` and referenced business record |
 | `session.ended` | terminal session/outcome commit | `sales_sessions` plus `session_outcomes` |

@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from .contracts import NODE_CONTRACTS, SalesGraphState, StateUpdate, WorkflowNode, validate_node_update
+from .memory_node import update_memory_node
 from .understanding import TurnUnderstandingPort, understand_turn_node
 
 
@@ -34,6 +35,8 @@ def build_sales_graph(
         action = (
             partial(understand_turn_node, port=understanding_port)
             if node == WorkflowNode.UNDERSTAND_TURN and understanding_port is not None
+            else update_memory_node
+            if node == WorkflowNode.UPDATE_MEMORY
             else _contract_node(node)
         )
         builder.add_node(node.value, cast(Any, action))

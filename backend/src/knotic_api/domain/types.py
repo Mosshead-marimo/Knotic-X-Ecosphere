@@ -113,6 +113,7 @@ class EventType(StrEnum):
     TURN_COMPLETED = "turn.completed"
     RESPONSE_INTERRUPTED = "response.interrupted"
     REQUIREMENT_UPDATED = "requirement.updated"
+    MEMORY_UPDATED = "memory.updated"
     QUALIFICATION_UPDATED = "qualification.updated"
     OPERATION_UPDATED = "operation.updated"
     SESSION_ENDED = "session.ended"

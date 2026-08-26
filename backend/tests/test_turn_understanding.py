@@ -49,6 +49,8 @@ def _graph_state(text: str = "We need 250 users") -> dict[str, object]:
             tenant_id=tenant_id,
             session_id=session_id,
             turn_id=new_uuid7(timestamp_ms=1_787_000_100_002),
+            correlation_id=new_uuid7(timestamp_ms=1_787_000_100_003),
+            actor_id=new_uuid7(timestamp_ms=1_787_000_100_004),
             sequence=1,
             text=text,
             locale="en-US",

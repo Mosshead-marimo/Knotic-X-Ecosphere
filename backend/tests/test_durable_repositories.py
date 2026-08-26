@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -12,14 +14,21 @@ from alembic.config import Config
 from sqlalchemy.engine import Engine
 
 from knotic_api.domain.identifiers import new_uuid7
-from knotic_api.domain.models import Requirement
-from knotic_api.domain.types import RequirementField, RequirementUpdateSource, SessionStatus
+from knotic_api.domain.models import Objection, Requirement
+from knotic_api.domain.types import (
+    ObjectionCategory,
+    ObjectionStatus,
+    RequirementField,
+    RequirementUpdateSource,
+    SessionStatus,
+)
 from knotic_api.persistence.repositories import (
     FollowupRepository,
     IdempotencyReservation,
     LeadCreate,
     MeetingCreate,
     MeetingRepository,
+    ObjectionEvidenceCreate,
     RequirementRevisionCommand,
     SessionCreate,
 )
@@ -167,6 +176,62 @@ def test_idempotency_reservation_prevents_duplicate_business_record(repository_e
             )
             == 1
         )
+
+
+@pytest.mark.integration
+def test_objection_current_state_and_evidence_history_are_replay_safe_and_isolated(
+    repository_engine: Engine,
+) -> None:
+    tenant_a = new_uuid7()
+    tenant_b = new_uuid7()
+    session_id = new_uuid7()
+    turn_id = new_uuid7()
+    objection_id = new_uuid7()
+    evidence_id = new_uuid7()
+    _create_tenant(repository_engine, tenant_a, f"tenant-{tenant_a}")
+    _create_tenant(repository_engine, tenant_b, f"tenant-{tenant_b}")
+    with UnitOfWork(repository_engine, tenant_id=tenant_a) as work:
+        work.sessions.create(SessionCreate(session_id=session_id, locale="en-US", timezone="UTC"))
+        work.objections.save(
+            Objection(
+                objection_id=objection_id,
+                tenant_id=tenant_a,
+                session_id=session_id,
+                category=ObjectionCategory.PRICE,
+                detail="The price is too high",
+                status=ObjectionStatus.OPEN,
+                first_turn_id=turn_id,
+                latest_turn_id=turn_id,
+                version=1,
+            ),
+            detail_ciphertext=b"encrypted-objection",
+        )
+        evidence = ObjectionEvidenceCreate(
+            evidence_id=evidence_id,
+            session_id=session_id,
+            objection_id=objection_id,
+            source_turn_id=turn_id,
+            category=ObjectionCategory.PRICE,
+            start_offset=0,
+            end_offset=21,
+            evidence_sha256=b"h" * 32,
+            confidence=Decimal("0.960"),
+            risk_flags=(),
+            policy_action="GROUND_PRICING",
+            escalation_required=False,
+            detected_at=datetime.now(UTC),
+        )
+        assert work.objections.append_evidence(evidence) == evidence_id
+        assert work.objections.append_evidence(evidence) == evidence_id
+
+    with repository_engine.begin() as connection:
+        assert connection.scalar(sa.text("select count(*) from objection_evidence")) == 1
+        connection.execute(sa.text("set local role knotic_runtime"))
+        connection.execute(sa.text("select set_config('app.tenant_id', :tenant, true)"), {"tenant": str(tenant_b)})
+        assert connection.scalar(sa.text("select count(*) from objection_evidence")) == 0
+
+    with pytest.raises(ValueError, match="conflicts"), UnitOfWork(repository_engine, tenant_id=tenant_a) as work:
+        work.objections.append_evidence(replace(evidence, evidence_sha256=b"x" * 32))
 
 
 def _revision_command(

@@ -8,7 +8,7 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 
-from knotic_api.domain import UUID7, DomainEvent, SalesState
+from knotic_api.domain import UUID7, DomainEvent, ObjectionCategory, SalesState
 
 
 class WorkflowNode(StrEnum):
@@ -91,6 +91,22 @@ class SalesRoute(StrEnum):
     GENERAL_QUESTION = "GENERAL_QUESTION"
     CLOSING = "CLOSING"
     CLARIFICATION = "CLARIFICATION"
+
+
+class ObjectionRisk(StrEnum):
+    SECURITY = "SECURITY"
+    LEGAL = "LEGAL"
+    TRUST = "TRUST"
+    UNSUPPORTED_CLAIM = "UNSUPPORTED_CLAIM"
+
+
+class ObjectionPolicyAction(StrEnum):
+    GROUND_PRICING = "GROUND_PRICING"
+    GROUND_COMPARISON = "GROUND_COMPARISON"
+    GROUND_CAPABILITY = "GROUND_CAPABILITY"
+    ASK_DISCOVERY = "ASK_DISCOVERY"
+    GROUND_OR_ESCALATE = "GROUND_OR_ESCALATE"
+    ESCALATE_HUMAN = "ESCALATE_HUMAN"
 
 
 class ExtractableField(StrEnum):
@@ -179,11 +195,30 @@ class ExtractedEntity(ContractModel):
         return self
 
 
+class ObjectionCandidate(ContractModel):
+    category: ObjectionCategory
+    confidence: float = Field(ge=0, le=1)
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(gt=0)
+    risk_flags: tuple[ObjectionRisk, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_candidate(self) -> ObjectionCandidate:
+        if self.category == ObjectionCategory.OTHER:
+            raise ValueError("model objection output must use an FR-07 category")
+        if self.end_offset <= self.start_offset:
+            raise ValueError("objection end_offset must be greater than start_offset")
+        if len(self.risk_flags) != len(set(self.risk_flags)):
+            raise ValueError("objection risk flags must be unique")
+        return self
+
+
 class ModelTurnUnderstanding(ContractModel):
     intent: SalesIntent
     intent_confidence: float = Field(ge=0, le=1)
     entities: tuple[ExtractedEntity, ...] = ()
     topic_control: TopicControl = TopicControl.SWITCH
+    objection_candidates: tuple[ObjectionCandidate, ...] = ()
     ambiguous: bool
     ambiguity_reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)] | None = (
         None
@@ -201,6 +236,13 @@ class ModelTurnUnderstanding(ContractModel):
         fields = [entity.field for entity in self.entities]
         if len(fields) != len(set(fields)):
             raise ValueError("model output may contain only one proposal per memory field")
+        categories = [candidate.category for candidate in self.objection_candidates]
+        if len(categories) != len(set(categories)):
+            raise ValueError("model output may contain only one objection per category")
+        if self.objection_candidates and self.intent != SalesIntent.OBJECTION:
+            raise ValueError("turns with objection candidates must use the OBJECTION intent")
+        if self.ambiguous and self.objection_candidates:
+            raise ValueError("ambiguous turns cannot create objection evidence")
         return self
 
 
@@ -213,6 +255,8 @@ class TurnUnderstanding(ModelTurnUnderstanding):
             raise ValueError("understanding provenance must match the source turn")
         if any(entity.end_offset > len(turn.text) for entity in self.entities):
             raise ValueError("entity evidence span exceeds the source turn")
+        if any(candidate.end_offset > len(turn.text) for candidate in self.objection_candidates):
+            raise ValueError("objection evidence span exceeds the source turn")
         return self
 
 
@@ -233,6 +277,49 @@ class TopicFrame(ContractModel):
     entered_at: AwareDatetime
 
 
+class ObjectionEvidence(ContractModel):
+    objection_id: UUID7
+    category: ObjectionCategory
+    source_turn_id: UUID7
+    start_offset: int = Field(ge=0)
+    end_offset: int = Field(gt=0)
+    evidence_sha256: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
+    confidence: float = Field(ge=0, le=1)
+    risk_flags: tuple[ObjectionRisk, ...]
+    policy_action: ObjectionPolicyAction
+    escalation_required: bool
+    detected_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def validate_span(self) -> ObjectionEvidence:
+        if self.end_offset <= self.start_offset:
+            raise ValueError("objection evidence end_offset must be greater than start_offset")
+        return self
+
+
+class ObjectionDecision(ContractModel):
+    objection_id: UUID7
+    category: ObjectionCategory
+    policy_action: ObjectionPolicyAction
+    escalation_required: bool
+    requires_grounding: bool
+    reason_code: Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]{2,63}$")]
+
+    @model_validator(mode="after")
+    def validate_policy_flags(self) -> ObjectionDecision:
+        if self.escalation_required != (self.policy_action == ObjectionPolicyAction.ESCALATE_HUMAN):
+            raise ValueError("objection escalation flag must match the policy action")
+        grounding_actions = {
+            ObjectionPolicyAction.GROUND_PRICING,
+            ObjectionPolicyAction.GROUND_COMPARISON,
+            ObjectionPolicyAction.GROUND_CAPABILITY,
+            ObjectionPolicyAction.GROUND_OR_ESCALATE,
+        }
+        if self.requires_grounding != (self.policy_action in grounding_actions):
+            raise ValueError("objection grounding flag must match the policy action")
+        return self
+
+
 class WorkflowError(ContractModel):
     code: WorkflowErrorCode
     safe_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -250,7 +337,8 @@ class SalesGraphState(TypedDict):
     emitted_events: NotRequired[tuple[DomainEvent, ...]]
     route: NotRequired[SalesRoute | None]
     topic_history: NotRequired[tuple[TopicFrame, ...]]
-    objection_decision: NotRequired[object | None]
+    objection_decision: NotRequired[ObjectionDecision | None]
+    objection_history: NotRequired[tuple[ObjectionEvidence, ...]]
     workflow_error: NotRequired[WorkflowError | None]
 
 
@@ -263,7 +351,8 @@ class StateUpdate(TypedDict, total=False):
     emitted_events: tuple[DomainEvent, ...]
     route: SalesRoute | None
     topic_history: tuple[TopicFrame, ...]
-    objection_decision: object | None
+    objection_decision: ObjectionDecision | None
+    objection_history: tuple[ObjectionEvidence, ...]
     workflow_error: WorkflowError | None
 
 
@@ -320,7 +409,16 @@ NODE_CONTRACTS: dict[WorkflowNode, NodeContract] = {
     WorkflowNode.DETECT_OBJECTION: NodeContract(
         node=WorkflowNode.DETECT_OBJECTION,
         kind=NodeKind.PURE,
-        allowed_mutations=frozenset({"sales_state", "objection_decision", "emitted_events", "workflow_error"}),
+        allowed_mutations=frozenset(
+            {
+                "sales_state",
+                "checkpoint",
+                "objection_decision",
+                "objection_history",
+                "emitted_events",
+                "workflow_error",
+            }
+        ),
         description="Apply deterministic objection classification and escalation policy.",
     ),
     WorkflowNode.ROUTE_TURN: NodeContract(

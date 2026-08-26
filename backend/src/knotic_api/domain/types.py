@@ -61,10 +61,13 @@ class RequirementUpdateSource(StrEnum):
 
 class ObjectionCategory(StrEnum):
     PRICE = "PRICE"
-    TIMING = "TIMING"
-    SECURITY = "SECURITY"
-    INTEGRATION = "INTEGRATION"
     COMPETITOR = "COMPETITOR"
+    SECURITY = "SECURITY"
+    TRUST = "TRUST"
+    FEATURE_GAP = "FEATURE_GAP"
+    IMPLEMENTATION = "IMPLEMENTATION"
+    TIMELINE = "TIMELINE"
+    BUDGET = "BUDGET"
     AUTHORITY = "AUTHORITY"
     OTHER = "OTHER"
 
@@ -114,6 +117,7 @@ class EventType(StrEnum):
     RESPONSE_INTERRUPTED = "response.interrupted"
     REQUIREMENT_UPDATED = "requirement.updated"
     MEMORY_UPDATED = "memory.updated"
+    OBJECTION_UPDATED = "objection.updated"
     QUALIFICATION_UPDATED = "qualification.updated"
     OPERATION_UPDATED = "operation.updated"
     SESSION_ENDED = "session.ended"

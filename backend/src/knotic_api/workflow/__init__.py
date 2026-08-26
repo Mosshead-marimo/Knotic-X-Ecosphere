@@ -7,6 +7,11 @@ from .contracts import (
     ModelTurnUnderstanding,
     NodeContract,
     NodeKind,
+    ObjectionCandidate,
+    ObjectionDecision,
+    ObjectionEvidence,
+    ObjectionPolicyAction,
+    ObjectionRisk,
     SalesGraphState,
     SalesIntent,
     SalesRoute,
@@ -24,6 +29,7 @@ from .contracts import (
 )
 from .graph import build_sales_graph
 from .memory_node import update_memory_node
+from .objections import detect_objection_node, objection_policy
 from .routing import INTENT_ROUTES, ROUTE_NODES, route_destination, route_turn_node, select_route
 from .understanding import OpenAITurnUnderstanding, TurnUnderstandingPort, understand_turn_node
 
@@ -36,6 +42,11 @@ __all__ = [
     "ModelTurnUnderstanding",
     "NodeContract",
     "NodeKind",
+    "ObjectionCandidate",
+    "ObjectionDecision",
+    "ObjectionEvidence",
+    "ObjectionPolicyAction",
+    "ObjectionRisk",
     "OpenAITurnUnderstanding",
     "SalesGraphState",
     "SalesIntent",
@@ -51,6 +62,8 @@ __all__ = [
     "WorkflowErrorCode",
     "WorkflowNode",
     "build_sales_graph",
+    "detect_objection_node",
+    "objection_policy",
     "route_destination",
     "route_turn_node",
     "select_route",

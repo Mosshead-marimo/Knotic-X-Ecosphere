@@ -13,9 +13,10 @@ from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.engine import Connection, RowMapping
 
 from knotic_api.domain.models import DomainEvent, Message, Objection, Outcome, Requirement, SalesState, ToolCall
-from knotic_api.domain.types import EventType, RequirementUpdateSource, SessionStatus
+from knotic_api.domain.types import EventType, ObjectionCategory, RequirementUpdateSource, SessionStatus
 
 from . import schema_v1 as schema
+from .objection_schema import objection_evidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +127,23 @@ class RequirementRevision:
     current_value: Any
     version: int
     changed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectionEvidenceCreate:
+    evidence_id: UUID
+    session_id: UUID
+    objection_id: UUID
+    source_turn_id: UUID
+    category: ObjectionCategory
+    start_offset: int
+    end_offset: int
+    evidence_sha256: bytes
+    confidence: Decimal
+    risk_flags: tuple[str, ...]
+    policy_action: str
+    escalation_required: bool
+    detected_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -584,6 +602,82 @@ class ObjectionRepository(TenantRepository):
         if saved_id is None:
             raise ValueError("objection version did not increase")
         return cast(UUID, saved_id)
+
+    def append_evidence(self, command: ObjectionEvidenceCreate) -> UUID:
+        if any(
+            identifier.version != 7
+            for identifier in (command.evidence_id, command.session_id, command.objection_id, command.source_turn_id)
+        ):
+            raise ValueError("objection evidence identifiers must be UUIDv7")
+        if command.category == ObjectionCategory.OTHER:
+            raise ValueError("objection evidence requires an FR-07 category")
+        if command.start_offset < 0 or command.end_offset <= command.start_offset:
+            raise ValueError("objection evidence span is invalid")
+        if len(command.evidence_sha256) != 32:
+            raise ValueError("objection evidence hash must be SHA-256")
+        if command.confidence < 0 or command.confidence > 1:
+            raise ValueError("objection evidence confidence must be between zero and one")
+        allowed_risks = {"SECURITY", "LEGAL", "TRUST", "UNSUPPORTED_CLAIM"}
+        if len(command.risk_flags) != len(set(command.risk_flags)) or not set(command.risk_flags) <= allowed_risks:
+            raise ValueError("objection evidence risk flags are invalid")
+        allowed_actions = {
+            "GROUND_PRICING",
+            "GROUND_COMPARISON",
+            "GROUND_CAPABILITY",
+            "ASK_DISCOVERY",
+            "GROUND_OR_ESCALATE",
+            "ESCALATE_HUMAN",
+        }
+        if command.policy_action not in allowed_actions:
+            raise ValueError("objection evidence policy action is invalid")
+        statement = postgres_insert(objection_evidence).values(
+            id=command.evidence_id,
+            tenant_id=self.tenant_id,
+            session_id=command.session_id,
+            objection_id=command.objection_id,
+            source_turn_id=command.source_turn_id,
+            category=command.category.value,
+            start_offset=command.start_offset,
+            end_offset=command.end_offset,
+            evidence_sha256=command.evidence_sha256,
+            confidence=command.confidence,
+            risk_flags=list(command.risk_flags),
+            policy_action=command.policy_action,
+            escalation_required=command.escalation_required,
+            detected_at=command.detected_at,
+        )
+        saved_id = self.connection.execute(
+            statement.on_conflict_do_nothing(
+                index_elements=[
+                    objection_evidence.c.tenant_id,
+                    objection_evidence.c.session_id,
+                    objection_evidence.c.objection_id,
+                    objection_evidence.c.source_turn_id,
+                ]
+            ).returning(objection_evidence.c.id)
+        ).scalar_one_or_none()
+        if saved_id is not None:
+            return cast(UUID, saved_id)
+        existing = (
+            self.connection.execute(
+                sa.select(objection_evidence).where(
+                    objection_evidence.c.tenant_id == self.tenant_id,
+                    objection_evidence.c.session_id == command.session_id,
+                    objection_evidence.c.objection_id == command.objection_id,
+                    objection_evidence.c.source_turn_id == command.source_turn_id,
+                )
+            )
+            .mappings()
+            .one()
+        )
+        if (
+            existing["evidence_sha256"] != command.evidence_sha256
+            or existing["category"] != command.category.value
+            or existing["policy_action"] != command.policy_action
+            or existing["escalation_required"] != command.escalation_required
+        ):
+            raise ValueError("objection evidence replay conflicts with persisted evidence")
+        return cast(UUID, existing["id"])
 
 
 class MeetingRepository(TenantRepository):

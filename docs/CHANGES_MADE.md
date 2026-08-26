@@ -510,6 +510,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/security linting and strict mypy passed across 29 backend source modules. The complete 69-test repository suite passed against pinned PostgreSQL 17/pgvector and Redis 8.8.1 containers, including the expected-load baseline of 500 cache reads across 25 workers with measured p95 at or below 75 ms. Tests also verified metrics authentication/disablement, bounded metric output, correlation-only span attributes, alert threshold activation, dashboard JSON parsing, and complete Prometheus rule coverage. API, data-model, MCP, operations-document, frontend-secret, repository-secret, and whitespace validators passed. The production backend image built successfully from its digest-pinned Python 3.13 base with the locked runtime dependency set.
 - Follow-up: Run the documented 30-minute staging workload and attach its dashboard snapshot before production release; configure private monitoring ingress, a rotated metrics token, and the production OTLP collector endpoint.
 
+### 2026-08-26 — Defined LangGraph state and node contracts
+
+- Phase: 2 (`P2-T001`, GitHub #43)
+- Status: Added
+- Files: `knotic_api.workflow` state/checkpoint/error contracts, compile-only graph topology, workflow contract tests, backend documentation, Phase 2 task status
+- Summary: Added a versioned typed LangGraph state carrying the durable `SalesState`, authenticated semantic turn, tenant/session-derived checkpoint identity, bounded workflow artifacts, events, route, objection decision, and safe failure. Defined every planned graph node, its pure-versus-I/O classification, and an explicit state-field mutation allowlist. Added safe, retry-aware failure codes and a stable compile-only graph whose contract nodes cannot perform model, provider, database, or MCP work.
+- Verification: Ruff formatting/linting and strict mypy passed across 32 backend source modules. Three focused tests passed for checkpoint/session identity binding, strict turn schemas, forbidden state mutation rejection, complete node-contract coverage, pure/I/O boundary coverage, stable graph node/edge inventory, and successful LangGraph compilation.
+- Follow-up: Implement `P2-T002` through the typed model port and replace only the `understand_turn` contract node.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

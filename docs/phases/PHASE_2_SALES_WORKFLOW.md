@@ -11,7 +11,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 
 ## Tasks
 
-### [ ] P2-T001 — Define graph state and node contracts
+### [x] P2-T001 — Define graph state and node contracts
 
 - Dependencies: P1-T001, P1-T008.
 - Implement: Versioned LangGraph state, node input/output schemas, checkpoint identity, error types, and pure-versus-I/O node boundaries.
@@ -84,4 +84,3 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 ## Phase gate
 
 All intents, objections, scores, actions, and failure paths pass deterministic tests and evaluation thresholds; graph replay is idempotent; no transactional success can be asserted without a validated tool result.
-

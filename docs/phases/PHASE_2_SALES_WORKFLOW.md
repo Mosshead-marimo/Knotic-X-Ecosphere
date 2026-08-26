@@ -32,7 +32,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Latest confirmed requirements replace active values; uncertain statements do not overwrite confirmed facts.
 - Verify: Revision, ambiguity, topic-switch, and replay tests.
 
-### [ ] P2-T004 — Implement intent routing and nonlinear topic control
+### [x] P2-T004 — Implement intent routing and nonlinear topic control
 
 - Dependencies: P2-T002, P2-T003.
 - Implement: Routes for discovery, pricing, product, competitor, objection, revision, demo, booking, follow-up, handoff, general questions, and closing; support return to prior topics.

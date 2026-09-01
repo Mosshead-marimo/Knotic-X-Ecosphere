@@ -555,6 +555,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/security linting and strict mypy passed across 31 backend source modules. All 72 non-integration tests and the complete 94-test suite passed; the latter ran against isolated pinned PostgreSQL 17/pgvector and Redis 8.8.1 containers. Coverage includes the complete nine-category matrix, security/legal/trust escalation, unsupported-claim grounding, exact evidence spans, repeated objection version/history preservation, exact replay without duplicate evidence/events, topic-change retention, conflicting durable replay rejection, runtime RLS cross-tenant hiding, fresh migration, populated rollback/re-upgrade, and one Alembic head at `20260826_0006`. The 10-event OpenAPI contract, 31-entity data model, MCP contract, operations documentation, repository-secret, and frontend-secret validators passed.
 - Follow-up: Implement deterministic qualification scoring in `P2-T006`; atomically persist the graph's objection current state, immutable evidence, event batch, and checkpoint as one unit in `P2-T009`.
 
+### 2026-09-01 — Added Agora Voice AI onboarding and recipe guidance
+
+- Phase: 4 (documentation preparation; no task marked complete)
+- Status: Added
+- Files: Agora Voice AI guide, repository README, Phase 4 implementation references
+- Summary: Documented the microphone-to-STT-to-workflow/model-to-TTS pipeline, Agora-managed Deepgram/OpenAI/MiniMax prototype path, the session's 300-minute signup note with a console-verification caveat, BYOK/provider evaluation requirements, CLI onboarding, server-only credential rules, and official recipes for Next.js, Python, interruption, MCP, tool calling, webhooks, and observability. Clarified where recipe architectures must be adapted to preserve Knotic's binding Flask, LangGraph, MCP, state, and transaction-truth boundaries.
+- Verification: Reviewed the linked Agora Start with AI guide and Voice AI recipes catalog plus the relevant official recipe pages; checked all added repository-relative documentation links. The X source returned HTTP 403 to the web reader, so its message content is represented from the user-provided text and the link is retained as a source requiring browser access.
+- Follow-up: Revalidate provider availability, promotional entitlement, regions, quotas, billing, and current recipe behavior in the Agora Console and official documentation when Phase 4 implementation begins.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

@@ -37,3 +37,5 @@ See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `doc
 Configuration and secret-handling behavior is documented in `docs/CONFIGURATION.md`. `.env.example` is a placeholder-only local template; services never load it implicitly.
 
 Developer bootstrap, release, rollback, and incident procedures are in `docs/DEVELOPMENT.md`, `docs/RELEASE.md`, `docs/ROLLBACK.md`, and `docs/INCIDENT_RESPONSE.md`.
+
+Agora onboarding, managed-provider prototyping, BYOK considerations, and the most relevant official Voice AI recipes are collected in `docs/AGORA_VOICE_AI.md`.

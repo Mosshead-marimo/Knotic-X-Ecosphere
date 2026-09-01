@@ -9,6 +9,10 @@ Provide secure, accessible, low-latency voice conversations with correct interru
 - Phase 3 gate passed.
 - Agora and speech provider production accounts, quotas, regions, and data policies are approved.
 
+## Implementation references
+
+Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding path, managed-provider prototype, BYOK guardrails, and official recipes relevant to this phase. Recipes are references only; implementations must preserve the Flask, LangGraph, MCP, security, and state-ownership decisions in the source-of-truth documents.
+
 ## Tasks
 
 ### [ ] P4-T001 — Implement secure Agora session/token service
@@ -84,4 +88,3 @@ Provide secure, accessible, low-latency voice conversations with correct interru
 ## Phase gate
 
 Multi-turn calls, barge-in, reconnect, privacy, browser compatibility, and production-load tests pass; end-to-end latency and reliability meet approved targets; secrets and tenant channels are protected.
-

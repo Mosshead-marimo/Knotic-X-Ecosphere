@@ -555,6 +555,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff formatting/security linting and strict mypy passed across 31 backend source modules. All 72 non-integration tests and the complete 94-test suite passed; the latter ran against isolated pinned PostgreSQL 17/pgvector and Redis 8.8.1 containers. Coverage includes the complete nine-category matrix, security/legal/trust escalation, unsupported-claim grounding, exact evidence spans, repeated objection version/history preservation, exact replay without duplicate evidence/events, topic-change retention, conflicting durable replay rejection, runtime RLS cross-tenant hiding, fresh migration, populated rollback/re-upgrade, and one Alembic head at `20260826_0006`. The 10-event OpenAPI contract, 31-entity data model, MCP contract, operations documentation, repository-secret, and frontend-secret validators passed.
 - Follow-up: Implement deterministic qualification scoring in `P2-T006`; atomically persist the graph's objection current state, immutable evidence, event batch, and checkpoint as one unit in `P2-T009`.
 
+### 2026-09-03 — Implemented deterministic qualification policy
+
+- Phase: 2 (`P2-T006`, GitHub #59)
+- Status: Added
+- Files: FR-09 stage vocabulary, qualification evidence/override/assessment contracts, pure qualification node, graph integration, Hypothesis property tests and lock, reviewed domain schema snapshot, backend documentation, Phase 2 task status
+- Summary: Added deterministic scoring for Business Need (25), Product Fit (20), Deployment Fit (15), Timeline (15), Authority (10), Budget (5), and Purchase Intent (10) from confirmed structured memory and validated routes. Every calculation records points, maxima, closed evidence codes, missing-data state, prior score, source turn, and replay-stable identity. Score-derived stages use the exact 0/40/60/75 boundaries. Explicit booking, demo, follow-up, and closing requests can override only the stage through an auditable closed reason; the underlying score remains evidence-derived. Same-turn replay cannot duplicate history or `qualification.updated` events.
+- Verification: Ruff and strict mypy passed across 41 source modules. Thirty-two focused tests passed, including the exact 39/40/59/60/74/75 boundaries, Hypothesis coverage of every score from 0 through 100, complete seven-dimension scoring, missing-data behavior, explicit booking override provenance, checkpoint/event advancement, and exact replay.
+- Follow-up: Implement the deterministic FR-10 action policy in `P2-T007`; durable atomic graph persistence remains scoped to `P2-T009`.
+
 ### 2026-09-01 — Added Agora Voice AI onboarding and recipe guidance
 
 - Phase: 4 (documentation preparation; no task marked complete)

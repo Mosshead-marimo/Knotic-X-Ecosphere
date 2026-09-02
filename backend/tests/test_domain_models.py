@@ -103,7 +103,7 @@ def test_requirement_types_and_qualification_score_are_enforced() -> None:
             budget=5,
             purchase_intent=5,
             total_score=99,
-            buying_stage=BuyingStage.QUALIFIED,
+            buying_stage=BuyingStage.SALES_QUALIFIED,
             source_turn_id=turn_id,
             calculated_at=NOW,
         )

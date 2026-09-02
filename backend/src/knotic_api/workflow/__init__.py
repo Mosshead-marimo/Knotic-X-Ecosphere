@@ -12,6 +12,10 @@ from .contracts import (
     ObjectionEvidence,
     ObjectionPolicyAction,
     ObjectionRisk,
+    QualificationAssessment,
+    QualificationDimension,
+    QualificationEvidence,
+    QualificationOverride,
     SalesGraphState,
     SalesIntent,
     SalesRoute,
@@ -30,6 +34,7 @@ from .contracts import (
 from .graph import build_sales_graph
 from .memory_node import update_memory_node
 from .objections import detect_objection_node, objection_policy
+from .qualification import assess_qualification, buying_stage_for_score, update_qualification_node
 from .routing import INTENT_ROUTES, ROUTE_NODES, route_destination, route_turn_node, select_route
 from .understanding import OpenAITurnUnderstanding, TurnUnderstandingPort, understand_turn_node
 
@@ -48,6 +53,10 @@ __all__ = [
     "ObjectionPolicyAction",
     "ObjectionRisk",
     "OpenAITurnUnderstanding",
+    "QualificationAssessment",
+    "QualificationDimension",
+    "QualificationEvidence",
+    "QualificationOverride",
     "SalesGraphState",
     "SalesIntent",
     "SalesRoute",
@@ -61,7 +70,9 @@ __all__ = [
     "WorkflowError",
     "WorkflowErrorCode",
     "WorkflowNode",
+    "assess_qualification",
     "build_sales_graph",
+    "buying_stage_for_score",
     "detect_objection_node",
     "objection_policy",
     "route_destination",
@@ -69,6 +80,7 @@ __all__ = [
     "select_route",
     "understand_turn_node",
     "update_memory_node",
+    "update_qualification_node",
     "validate_graph_state",
     "validate_node_update",
 ]

@@ -8,7 +8,7 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 
-from knotic_api.domain import UUID7, DomainEvent, ObjectionCategory, SalesState
+from knotic_api.domain import UUID7, BuyingStage, DomainEvent, ObjectionCategory, Qualification, SalesState
 
 
 class WorkflowNode(StrEnum):
@@ -107,6 +107,16 @@ class ObjectionPolicyAction(StrEnum):
     ASK_DISCOVERY = "ASK_DISCOVERY"
     GROUND_OR_ESCALATE = "GROUND_OR_ESCALATE"
     ESCALATE_HUMAN = "ESCALATE_HUMAN"
+
+
+class QualificationDimension(StrEnum):
+    BUSINESS_NEED = "BUSINESS_NEED"
+    PRODUCT_FIT = "PRODUCT_FIT"
+    DEPLOYMENT_FIT = "DEPLOYMENT_FIT"
+    TIMELINE = "TIMELINE"
+    AUTHORITY = "AUTHORITY"
+    BUDGET = "BUDGET"
+    PURCHASE_INTENT = "PURCHASE_INTENT"
 
 
 class ExtractableField(StrEnum):
@@ -320,6 +330,45 @@ class ObjectionDecision(ContractModel):
         return self
 
 
+class QualificationEvidence(ContractModel):
+    dimension: QualificationDimension
+    points: int = Field(ge=0)
+    maximum: int = Field(gt=0)
+    sources: tuple[Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]{2,63}$")], ...]
+    missing: bool
+
+    @model_validator(mode="after")
+    def validate_points(self) -> QualificationEvidence:
+        if self.points > self.maximum:
+            raise ValueError("qualification evidence exceeds its dimension maximum")
+        if self.missing != (not self.sources):
+            raise ValueError("qualification missing flag must match evidence sources")
+        return self
+
+
+class QualificationOverride(ContractModel):
+    stage: BuyingStage
+    route: SalesRoute
+    source_turn_id: UUID7
+    reason_code: Literal["EXPLICIT_BOOKING", "EXPLICIT_DEMO", "EXPLICIT_FOLLOWUP", "EXPLICIT_CLOSING"]
+
+
+class QualificationAssessment(ContractModel):
+    qualification: Qualification
+    evidence: tuple[QualificationEvidence, ...]
+    override: QualificationOverride | None = None
+    previous_score: int = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def validate_dimensions(self) -> QualificationAssessment:
+        dimensions = [item.dimension for item in self.evidence]
+        if len(dimensions) != 7 or set(dimensions) != set(QualificationDimension):
+            raise ValueError("qualification assessment requires every dimension exactly once")
+        if sum(item.points for item in self.evidence) != self.qualification.total_score:
+            raise ValueError("qualification evidence must sum to the total score")
+        return self
+
+
 class WorkflowError(ContractModel):
     code: WorkflowErrorCode
     safe_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -339,6 +388,7 @@ class SalesGraphState(TypedDict):
     topic_history: NotRequired[tuple[TopicFrame, ...]]
     objection_decision: NotRequired[ObjectionDecision | None]
     objection_history: NotRequired[tuple[ObjectionEvidence, ...]]
+    qualification_history: NotRequired[tuple[QualificationAssessment, ...]]
     workflow_error: NotRequired[WorkflowError | None]
 
 
@@ -353,6 +403,7 @@ class StateUpdate(TypedDict, total=False):
     topic_history: tuple[TopicFrame, ...]
     objection_decision: ObjectionDecision | None
     objection_history: tuple[ObjectionEvidence, ...]
+    qualification_history: tuple[QualificationAssessment, ...]
     workflow_error: WorkflowError | None
 
 
@@ -430,7 +481,9 @@ NODE_CONTRACTS: dict[WorkflowNode, NodeContract] = {
     WorkflowNode.UPDATE_QUALIFICATION: NodeContract(
         node=WorkflowNode.UPDATE_QUALIFICATION,
         kind=NodeKind.PURE,
-        allowed_mutations=frozenset({"sales_state", "emitted_events", "workflow_error"}),
+        allowed_mutations=frozenset(
+            {"sales_state", "checkpoint", "qualification_history", "emitted_events", "workflow_error"}
+        ),
         description="Recalculate explainable qualification from structured evidence.",
     ),
     WorkflowNode.NEXT_BEST_ACTION: NodeContract(

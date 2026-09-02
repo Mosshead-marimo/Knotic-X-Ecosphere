@@ -46,7 +46,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Objections are not erased by topic changes; unsupported claims are grounded or escalated.
 - Verify: Category matrix, repeated objection, and escalation tests.
 
-### [ ] P2-T006 — Implement qualification engine
+### [x] P2-T006 — Implement qualification engine
 
 - Dependencies: P2-T003.
 - Implement: Pure scoring rules for the seven FR-09 dimensions, stage thresholds, evidence, missing-data behavior, recalculation, and explicit-request overrides.

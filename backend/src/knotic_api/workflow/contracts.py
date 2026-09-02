@@ -140,6 +140,21 @@ class ActionInput(StrEnum):
     FOLLOWUP_CHANNEL = "FOLLOWUP_CHANNEL"
 
 
+class GroundingDomain(StrEnum):
+    PRODUCT = "PRODUCT"
+    PRICING = "PRICING"
+    COMPETITOR = "COMPETITOR"
+    SECURITY = "SECURITY"
+    INTEGRATION = "INTEGRATION"
+    KNOWLEDGE = "KNOWLEDGE"
+
+
+class ResponseDisposition(StrEnum):
+    SPOKEN = "SPOKEN"
+    SILENT_HANDOFF = "SILENT_HANDOFF"
+    SILENT_END = "SILENT_END"
+
+
 class ExtractableField(StrEnum):
     CUSTOMER_NAME = "customer_name"
     COMPANY = "company"
@@ -421,6 +436,83 @@ class NextActionDecision(ContractModel):
         return not self.missing_inputs
 
 
+class GroundedFact(ContractModel):
+    citation_id: Annotated[str, StringConstraints(pattern=r"^cite_[A-Za-z0-9_-]{8,64}$")]
+    domain: GroundingDomain
+    statement: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+    source_title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
+    source_reference: Annotated[str, StringConstraints(pattern=r"^(?:https://|urn:)[^\s]{1,500}$")]
+    retrieved_at: AwareDatetime
+
+
+class ResponsePlan(ContractModel):
+    source_turn_id: UUID7
+    action: NextBestAction
+    disposition: ResponseDisposition = ResponseDisposition.SPOKEN
+    objective: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=240)]
+    talking_points: tuple[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)], ...]
+    facts: tuple[GroundedFact, ...] = ()
+    uncertainty_required: bool = False
+    deterministic_text: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=600)] | None
+    ) = None
+
+    @model_validator(mode="after")
+    def validate_plan(self) -> ResponsePlan:
+        if len(self.talking_points) > 4:
+            raise ValueError("voice response plans allow at most four talking points")
+        citation_ids = [fact.citation_id for fact in self.facts]
+        if len(citation_ids) != len(set(citation_ids)):
+            raise ValueError("response plan citation identifiers must be unique")
+        if self.disposition != ResponseDisposition.SPOKEN and self.deterministic_text is not None:
+            raise ValueError("silent response plans cannot contain spoken text")
+        return self
+
+
+class ModelResponseDraft(ContractModel):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=600)]
+    citation_ids: tuple[Annotated[str, StringConstraints(pattern=r"^cite_[A-Za-z0-9_-]{8,64}$")], ...] = ()
+
+    @model_validator(mode="after")
+    def validate_citations(self) -> ModelResponseDraft:
+        if len(self.citation_ids) != len(set(self.citation_ids)):
+            raise ValueError("response citations must be unique")
+        return self
+
+
+class GeneratedResponse(ContractModel):
+    source_turn_id: UUID7
+    disposition: ResponseDisposition
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=600)] | None = None
+    citations: tuple[GroundedFact, ...] = ()
+    provider_response_id: Annotated[str, StringConstraints(pattern=r"^resp_[A-Za-z0-9_-]{8,128}$")] | None = None
+
+    @model_validator(mode="after")
+    def validate_disposition(self) -> GeneratedResponse:
+        if self.disposition == ResponseDisposition.SPOKEN and self.text is None:
+            raise ValueError("spoken responses require text")
+        if self.disposition != ResponseDisposition.SPOKEN and (self.text is not None or self.citations):
+            raise ValueError("silent responses cannot contain text or citations")
+        return self
+
+
+class ResponseRubricReview(ContractModel):
+    reviewer_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")]
+    concise_voice_delivery: int = Field(ge=0, le=2)
+    directness: int = Field(ge=0, le=2)
+    grounding: int = Field(ge=0, le=2)
+    transaction_safety: int = Field(ge=0, le=2)
+    notes: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+    @property
+    def approved(self) -> bool:
+        return (
+            self.concise_voice_delivery + self.directness + self.grounding + self.transaction_safety >= 7
+            and self.grounding == 2
+            and self.transaction_safety == 2
+        )
+
+
 class WorkflowError(ContractModel):
     code: WorkflowErrorCode
     safe_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -443,6 +535,9 @@ class SalesGraphState(TypedDict):
     qualification_history: NotRequired[tuple[QualificationAssessment, ...]]
     action_inputs: NotRequired[frozenset[ActionInput]]
     next_action_decision: NotRequired[NextActionDecision | None]
+    grounded_facts: NotRequired[tuple[GroundedFact, ...]]
+    response_plan: NotRequired[ResponsePlan | None]
+    generated_response: NotRequired[GeneratedResponse | None]
     workflow_error: NotRequired[WorkflowError | None]
 
 
@@ -460,6 +555,9 @@ class StateUpdate(TypedDict, total=False):
     qualification_history: tuple[QualificationAssessment, ...]
     action_inputs: frozenset[ActionInput]
     next_action_decision: NextActionDecision | None
+    grounded_facts: tuple[GroundedFact, ...]
+    response_plan: ResponsePlan | None
+    generated_response: GeneratedResponse | None
     workflow_error: WorkflowError | None
 
 
@@ -551,7 +649,7 @@ NODE_CONTRACTS: dict[WorkflowNode, NodeContract] = {
     WorkflowNode.GENERATE_RESPONSE: NodeContract(
         node=WorkflowNode.GENERATE_RESPONSE,
         kind=NodeKind.IO,
-        allowed_mutations=frozenset({"sales_state", "workflow_error"}),
+        allowed_mutations=frozenset({"response_plan", "generated_response", "workflow_error"}),
         description="Generate and validate grounded response content through the model port.",
     ),
 }

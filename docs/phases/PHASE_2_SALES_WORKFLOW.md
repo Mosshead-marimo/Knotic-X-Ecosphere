@@ -60,7 +60,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Actions cannot bypass booking confirmation, tool grounding, or human-approval policies.
 - Verify: Decision-table tests and prohibited-transition tests.
 
-### [ ] P2-T008 — Implement response planning and generation
+### [x] P2-T008 — Implement response planning and generation
 
 - Dependencies: P2-T007.
 - Implement: Dedicated prompt modules, grounded context assembly, concise voice-oriented plans, uncertainty language, citation metadata, and output validation.

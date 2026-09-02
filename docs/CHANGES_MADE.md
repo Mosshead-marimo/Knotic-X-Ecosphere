@@ -564,6 +564,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff and strict mypy passed across 41 source modules. Thirty-two focused tests passed, including the exact 39/40/59/60/74/75 boundaries, Hypothesis coverage of every score from 0 through 100, complete seven-dimension scoring, missing-data behavior, explicit booking override provenance, checkpoint/event advancement, and exact replay.
 - Follow-up: Implement the deterministic FR-10 action policy in `P2-T007`; durable atomic graph persistence remains scoped to `P2-T009`.
 
+### 2026-09-03 — Implemented deterministic next-best-action policy
+
+- Phase: 2 (`P2-T007`, GitHub #60)
+- Status: Added
+- Files: complete FR-10 action vocabulary, action input/approval/decision contracts, deterministic action policy and graph node, persisted-vocabulary compatibility migration `20260903_0007`, decision/prohibited-transition tests, backend documentation, Phase 2 task status
+- Summary: Added one closed policy decision for every route and all twelve FR-10 actions, with explicit precedence for high-risk objection handoff and safe failure fallback. Each decision records its source turn, reason, required/missing inputs, MCP tool boundary, approval requirement, grounding rule, provider-confirmation rule, and safe fallback. Calendar booking remains non-executable without a selected slot and bound customer confirmation and always requires a provider-confirmed `calendar.book_meeting` result. Follow-up and handoff remain policy-governed; pricing, product, competitor, and objection answers remain grounded. A reversible migration translates the two legacy persisted action names to the accepted API vocabulary.
+- Verification: Decision-table tests cover all thirteen routes and twelve FR-10 actions. Prohibited-transition tests verify booking input/confirmation gates, high-risk objection precedence, tool/approval metadata, state/checkpoint mutation, and exact same-turn replay. Ruff, strict mypy, full repository tests, migration, and contract gates run before the component commit.
+- Follow-up: Implement grounded response planning and generation in `P2-T008`; action execution remains within the governed MCP tasks.
+
 ### 2026-09-01 — Added Agora Voice AI onboarding and recipe guidance
 
 - Phase: 4 (documentation preparation; no task marked complete)

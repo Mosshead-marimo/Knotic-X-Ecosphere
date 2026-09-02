@@ -8,7 +8,15 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 
-from knotic_api.domain import UUID7, BuyingStage, DomainEvent, ObjectionCategory, Qualification, SalesState
+from knotic_api.domain import (
+    UUID7,
+    BuyingStage,
+    DomainEvent,
+    NextBestAction,
+    ObjectionCategory,
+    Qualification,
+    SalesState,
+)
 
 
 class WorkflowNode(StrEnum):
@@ -117,6 +125,19 @@ class QualificationDimension(StrEnum):
     AUTHORITY = "AUTHORITY"
     BUDGET = "BUDGET"
     PURCHASE_INTENT = "PURCHASE_INTENT"
+
+
+class ApprovalRequirement(StrEnum):
+    NONE = "NONE"
+    POLICY = "POLICY"
+    CUSTOMER_CONFIRMATION = "CUSTOMER_CONFIRMATION"
+    HUMAN_APPROVAL = "HUMAN_APPROVAL"
+
+
+class ActionInput(StrEnum):
+    SELECTED_SLOT = "SELECTED_SLOT"
+    CUSTOMER_CONFIRMATION = "CUSTOMER_CONFIRMATION"
+    FOLLOWUP_CHANNEL = "FOLLOWUP_CHANNEL"
 
 
 class ExtractableField(StrEnum):
@@ -369,6 +390,37 @@ class QualificationAssessment(ContractModel):
         return self
 
 
+class NextActionDecision(ContractModel):
+    action: NextBestAction
+    source_turn_id: UUID7
+    reason_code: Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]{2,63}$")]
+    required_inputs: frozenset[ActionInput] = frozenset()
+    missing_inputs: frozenset[ActionInput] = frozenset()
+    approval: ApprovalRequirement = ApprovalRequirement.NONE
+    tool: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.]{2,127}$")] | None = None
+    requires_grounding: bool = False
+    provider_confirmation_required: bool = False
+    safe_fallback: NextBestAction = NextBestAction.ASK_DISCOVERY
+
+    @model_validator(mode="after")
+    def validate_action_policy(self) -> NextActionDecision:
+        if not self.missing_inputs <= self.required_inputs:
+            raise ValueError("missing action inputs must be required inputs")
+        if self.provider_confirmation_required and self.tool is None:
+            raise ValueError("provider confirmation requires a tool boundary")
+        if self.action == NextBestAction.BOOK_DEMO:
+            expected = {ActionInput.SELECTED_SLOT, ActionInput.CUSTOMER_CONFIRMATION}
+            if self.required_inputs != expected or self.approval != ApprovalRequirement.CUSTOMER_CONFIRMATION:
+                raise ValueError("booking requires a selected slot and bound customer confirmation")
+            if self.tool != "calendar.book_meeting" or not self.provider_confirmation_required:
+                raise ValueError("booking requires confirmed calendar tool execution")
+        return self
+
+    @property
+    def executable(self) -> bool:
+        return not self.missing_inputs
+
+
 class WorkflowError(ContractModel):
     code: WorkflowErrorCode
     safe_message: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
@@ -389,6 +441,8 @@ class SalesGraphState(TypedDict):
     objection_decision: NotRequired[ObjectionDecision | None]
     objection_history: NotRequired[tuple[ObjectionEvidence, ...]]
     qualification_history: NotRequired[tuple[QualificationAssessment, ...]]
+    action_inputs: NotRequired[frozenset[ActionInput]]
+    next_action_decision: NotRequired[NextActionDecision | None]
     workflow_error: NotRequired[WorkflowError | None]
 
 
@@ -404,6 +458,8 @@ class StateUpdate(TypedDict, total=False):
     objection_decision: ObjectionDecision | None
     objection_history: tuple[ObjectionEvidence, ...]
     qualification_history: tuple[QualificationAssessment, ...]
+    action_inputs: frozenset[ActionInput]
+    next_action_decision: NextActionDecision | None
     workflow_error: WorkflowError | None
 
 
@@ -489,7 +545,7 @@ NODE_CONTRACTS: dict[WorkflowNode, NodeContract] = {
     WorkflowNode.NEXT_BEST_ACTION: NodeContract(
         node=WorkflowNode.NEXT_BEST_ACTION,
         kind=NodeKind.PURE,
-        allowed_mutations=frozenset({"sales_state", "workflow_error"}),
+        allowed_mutations=frozenset({"sales_state", "checkpoint", "next_action_decision", "workflow_error"}),
         description="Select an approved action without performing the action.",
     ),
     WorkflowNode.GENERATE_RESPONSE: NodeContract(

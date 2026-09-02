@@ -1,10 +1,13 @@
 """Typed LangGraph sales workflow boundaries."""
 
 from .contracts import (
+    ActionInput,
+    ApprovalRequirement,
     CheckpointIdentity,
     ExtractableField,
     ExtractedEntity,
     ModelTurnUnderstanding,
+    NextActionDecision,
     NodeContract,
     NodeKind,
     ObjectionCandidate,
@@ -33,6 +36,7 @@ from .contracts import (
 )
 from .graph import build_sales_graph
 from .memory_node import update_memory_node
+from .next_action import decide_next_action, next_best_action_node
 from .objections import detect_objection_node, objection_policy
 from .qualification import assess_qualification, buying_stage_for_score, update_qualification_node
 from .routing import INTENT_ROUTES, ROUTE_NODES, route_destination, route_turn_node, select_route
@@ -41,10 +45,13 @@ from .understanding import OpenAITurnUnderstanding, TurnUnderstandingPort, under
 __all__ = [
     "INTENT_ROUTES",
     "ROUTE_NODES",
+    "ActionInput",
+    "ApprovalRequirement",
     "CheckpointIdentity",
     "ExtractableField",
     "ExtractedEntity",
     "ModelTurnUnderstanding",
+    "NextActionDecision",
     "NodeContract",
     "NodeKind",
     "ObjectionCandidate",
@@ -73,7 +80,9 @@ __all__ = [
     "assess_qualification",
     "build_sales_graph",
     "buying_stage_for_score",
+    "decide_next_action",
     "detect_objection_node",
+    "next_best_action_node",
     "objection_policy",
     "route_destination",
     "route_turn_node",

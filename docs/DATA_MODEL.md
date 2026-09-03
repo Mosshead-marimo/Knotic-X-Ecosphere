@@ -61,6 +61,7 @@ OIDC authorization codes, access tokens, refresh tokens, PKCE verifiers, Agora t
 | `objection_evidence` | `id`, tenant/session/objection/source-turn IDs, category, exact offsets, evidence SHA-256, confidence, risk flags, policy action, escalation decision, detected/created times | unique `(tenant_id,session_id,objection_id,source_turn_id)`; index `(tenant_id,session_id,category,detected_at,id)`; immutable runtime history | Same as session |
 | `session_competitors` | `id`, `tenant_id`, `session_id`, normalized name, encrypted context, timestamps/version | unique `(tenant_id,session_id,normalized_name)` | Same as session |
 | `qualification_snapshots` | `id`, `tenant_id`, `session_id`, seven constrained component scores, `total_score`, `buying_stage`, explicit override/action, source turn, `calculated_at` | check component sum equals total; index `(tenant_id,session_id,calculated_at,id)` | Immutable; same as session |
+| `workflow_turn_checkpoints` | `id`, tenant/session/turn IDs, input hash, execution status/attempt, encrypted graph state plus hash, safe failure fields, bounded lease/commit times | unique `(tenant_id,session_id,turn_id)`; partial expired-lease index; forced RLS | Same as session; committed records are immutable to workflow execution |
 
 `requirements_current` is the only authoritative current requirement view. A confirmed change transaction locks the current row, appends `requirement_changes`, updates the typed current value/version, and appends `requirement.updated` to `domain_events`. These writes commit together; latest confirmed value wins only through optimistic version/turn ordering. Unconfirmed model extraction never replaces a confirmed value.
 
@@ -151,6 +152,7 @@ Redis values carry `schema_version`, `tenant_id`, `session_id`, `state_version`,
 | recent messages/current question/unfinished response | Bounded state/voice projection | `messages` and interruption `domain_events` |
 | recent tool calls/results | Bounded tool-result key | `tool_calls` and `tool_results` |
 | conversation summary | Session state key | encrypted `sales_sessions.conversation_summary` |
+| in-flight/full committed graph state | Session execution lease | encrypted `workflow_turn_checkpoints`; normalized domain tables remain business authority |
 
 On a cache miss, Flask obtains the session lease, loads the session and latest related durable rows, verifies the event watermark/version, rebuilds the projection, and writes Redis only if no newer version exists.
 
@@ -163,6 +165,7 @@ On a cache miss, Flask obtains the session lease, loads the session and latest r
 5. Qualification total equals its seven components and maps deterministically to the FR-09 stage unless a recorded explicit-request override applies.
 6. Calendar/CRM/follow-up/handoff success requires validated provider confirmation. Ambiguous results remain pending and reconcile idempotently.
 7. Every MCP call and high-impact policy decision has a durable tool/audit record with schema versions and correlation identifiers.
+8. A semantic turn has one durable workflow checkpoint; committed replays return authenticated encrypted state without invoking the graph again, while expired or retryable leases can advance only to the bounded three-attempt maximum.
 8. Idempotency uniqueness is enforced before work begins; the same key with a different canonical hash is a conflict.
 9. Event and audit tables are append-only to application roles. Corrections append compensating events.
 10. Raw audio is not persisted by default. If recording is later enabled, consent, purpose, encrypted object storage, retention, deletion, and access audit require a new accepted decision.

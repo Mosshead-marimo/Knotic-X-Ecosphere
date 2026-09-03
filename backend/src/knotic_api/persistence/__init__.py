@@ -21,3 +21,16 @@ __all__ = [
     "RedisSalesStateRepository",
     "StaleFencingToken",
 ]
+from .workflow_checkpoints import (
+    WorkflowCheckpointBusy,
+    WorkflowCheckpointRecord,
+    WorkflowCheckpointRepository,
+    WorkflowCheckpointStatus,
+)
+
+__all__ = [
+    "WorkflowCheckpointBusy",
+    "WorkflowCheckpointRecord",
+    "WorkflowCheckpointRepository",
+    "WorkflowCheckpointStatus",
+]

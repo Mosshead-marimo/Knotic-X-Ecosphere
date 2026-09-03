@@ -9,7 +9,7 @@ const requireText = (value, group) => { if (!model.includes(value)) failures.pus
 
 for (const section of ["PostgreSQL entity catalog", "Redis active-state model", "Knowledge and pgvector", "Invariants and transaction boundaries", "Encryption and data minimization", "Retention, deletion, and recovery", "Migration strategy", "Requirement traceability"]) requireText(`## ${section}`, "missing section");
 
-for (const entity of ["tenants", "actors", "leads", "sales_sessions", "calls", "messages", "requirements_current", "requirement_changes", "objections", "objection_evidence", "session_competitors", "qualification_snapshots", "tool_calls", "tool_results", "operations", "idempotency_records", "meetings", "followups", "handoffs", "session_outcomes", "pending_provider_updates", "domain_events", "outbox_messages", "inbox_receipts", "audit_events", "knowledge_documents", "knowledge_chunks", "knowledge_embeddings", "knowledge_index_versions"]) requireText(`\`${entity}\``, "missing entity");
+for (const entity of ["tenants", "actors", "leads", "sales_sessions", "calls", "messages", "requirements_current", "requirement_changes", "objections", "objection_evidence", "session_competitors", "qualification_snapshots", "workflow_turn_checkpoints", "tool_calls", "tool_results", "operations", "idempotency_records", "meetings", "followups", "handoffs", "session_outcomes", "pending_provider_updates", "domain_events", "outbox_messages", "inbox_receipts", "audit_events", "knowledge_documents", "knowledge_chunks", "knowledge_embeddings", "knowledge_index_versions"]) requireText(`\`${entity}\``, "missing entity");
 
 for (const state of ["session_id", "customer", "company", "role", "users", "use cases", "integrations", "budget", "timeline", "objections", "competitors", "current topic/intent", "buying stage", "qualification", "next action", "recent messages", "tool calls/results", "conversation summary", "outcome"]) requireText(state, "missing SalesState authority");
 
@@ -27,5 +27,5 @@ if (failures.length) {
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exitCode = 1;
 } else {
-  console.log("Data model validation passed: 31 entities, 8 Redis key contracts, complete state/event ownership, and FR-04/05/07/11-14 traceability.");
+  console.log("Data model validation passed: 32 entities, 8 Redis key contracts, complete state/event ownership, and FR-04/05/07/11-14 traceability.");
 }

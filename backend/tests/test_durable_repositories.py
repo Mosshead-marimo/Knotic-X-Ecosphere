@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 import pytest
 import sqlalchemy as sa
@@ -14,7 +15,7 @@ from alembic.config import Config
 from sqlalchemy.engine import Engine
 
 from knotic_api.domain.identifiers import new_uuid7
-from knotic_api.domain.models import Objection, Requirement
+from knotic_api.domain.models import Objection, Requirement, SalesState
 from knotic_api.domain.types import (
     ObjectionCategory,
     ObjectionStatus,
@@ -33,6 +34,8 @@ from knotic_api.persistence.repositories import (
     SessionCreate,
 )
 from knotic_api.persistence.unit_of_work import UnitOfWork
+from knotic_api.persistence.workflow_schema import workflow_turn_checkpoints
+from knotic_api.workflow import CheckpointIdentity, PostgresWorkflowCheckpointStore, SalesGraphState, SemanticTurn
 
 ROOT = Path(__file__).parents[2]
 
@@ -58,6 +61,60 @@ def _create_tenant(engine: Engine, tenant_id: object, slug: str) -> None:
             sa.text("insert into tenants(id,slug,status) values (:id,:slug,'ACTIVE')"),
             {"id": tenant_id, "slug": slug},
         )
+
+
+@pytest.mark.integration
+def test_workflow_checkpoint_is_encrypted_durable_and_replay_safe(repository_engine: Engine) -> None:
+    tenant_id, session_id, turn_id, actor_id = new_uuid7(), new_uuid7(), new_uuid7(), new_uuid7()
+    _create_tenant(repository_engine, tenant_id, f"tenant-{tenant_id}")
+    with UnitOfWork(repository_engine, tenant_id=tenant_id) as work:
+        work.sessions.create(SessionCreate(session_id=session_id, locale="en-US", timezone="UTC"))
+    now = datetime.now(UTC)
+    sales = SalesState(
+        tenant_id=tenant_id,
+        session_id=session_id,
+        status=SessionStatus.CREATED,
+        version=1,
+        created_at=now,
+        updated_at=now,
+    )
+    state: SalesGraphState = {
+        "schema_version": 1,
+        "checkpoint": CheckpointIdentity.for_state(sales),
+        "sales_state": sales,
+        "turn": SemanticTurn(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            correlation_id=new_uuid7(),
+            actor_id=actor_id,
+            sequence=1,
+            text="Sensitive customer checkpoint text",
+            locale="en-US",
+            occurred_at=now,
+        ),
+    }
+    store = PostgresWorkflowCheckpointStore(repository_engine, encryption_key=b"w" * 32)
+    record = store.acquire(state, lease_seconds=20)
+    store.commit(record, state)
+    replay = store.acquire(state, lease_seconds=20)
+    assert replay.status.value == "COMMITTED"
+    assert store.load_committed(replay) == state
+    with repository_engine.connect() as connection:
+        row = (
+            connection.execute(
+                sa.select(workflow_turn_checkpoints).where(workflow_turn_checkpoints.c.id == record.checkpoint_id)
+            )
+            .mappings()
+            .one()
+        )
+    assert b"Sensitive customer checkpoint text" not in row["state_ciphertext"]
+    assert row["state_hash"] != row["state_ciphertext"]
+
+    conflicting = dict(state)
+    conflicting["turn"] = state["turn"].model_copy(update={"text": "Different replay payload"})
+    with pytest.raises(ValueError, match="conflicts"):
+        store.acquire(cast(SalesGraphState, conflicting), lease_seconds=20)
 
 
 @pytest.mark.integration

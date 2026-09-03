@@ -12,6 +12,7 @@ from alembic.config import Config
 from sqlalchemy.exc import IntegrityError
 
 from knotic_api.persistence.schema_v1 import EXPECTED_TABLE_NAMES, TENANT_TABLE_NAMES, metadata
+from knotic_api.persistence.workflow_schema import workflow_turn_checkpoints
 
 ROOT = Path(__file__).parents[2]
 EXPECTED_ENTITIES = {
@@ -51,6 +52,7 @@ EXPECTED_ENTITIES = {
 def test_schema_matches_the_documented_entity_catalog() -> None:
     assert EXPECTED_TABLE_NAMES == EXPECTED_ENTITIES
     assert TENANT_TABLE_NAMES == EXPECTED_ENTITIES - {"tenants"}
+    assert workflow_turn_checkpoints.name == "workflow_turn_checkpoints"
 
 
 def test_every_foreign_key_has_a_left_prefix_index() -> None:
@@ -88,6 +90,7 @@ def test_migration_constraints_rls_query_plan_and_populated_rollback() -> None:
     try:
         inspector = sa.inspect(engine)
         assert EXPECTED_ENTITIES <= set(inspector.get_table_names())
+        assert "workflow_turn_checkpoints" in inspector.get_table_names()
         with engine.connect() as connection:
             rls = connection.execute(
                 sa.text(

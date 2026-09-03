@@ -591,6 +591,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Ruff and strict mypy passed. The complete non-integration backend suite passed, including golden plan/disposition cases, missing-grounding behavior, structured-output and non-retention settings, prompt-injection isolation, hallucinated pricing/integration probes, unknown/missing citations, transactional wording, provenance, replay, and human-rubric approval.
 - Follow-up: Add durable per-session checkpoints, bounded retry policy, and duplicate-turn protection in `P2-T009`.
 
+### 2026-09-03 — Implemented durable workflow recovery and duplicate-turn protection
+
+- Phase: 2 (`P2-T009`, GitHub #62)
+- Status: Added
+- Files: workflow execution/retry contracts, bounded graph adapter, encrypted PostgreSQL checkpoint store/repository, checkpoint schema and Alembic revision `20260903_0008`, UnitOfWork integration, fault/replay/persistence tests, data/backend documentation, Phase 2 task status
+- Summary: Added one forced-RLS checkpoint row per tenant/session/turn with an input hash, bounded lease, attempt counter, deterministic status, safe failure metadata, and authenticated encrypted committed graph state. The executor returns committed or terminal records before invoking LangGraph, so replay cannot duplicate graph-side effects. Retryable failures resume for at most the configured one-to-three attempts; non-retryable failures, exhausted retries, unexpected exceptions, active concurrent leases, and deadlines resolve to explicit safe outcomes. A bounded shared worker pool enforces whole-attempt deadlines while provider adapters retain tighter I/O timeouts.
+- Verification: Ruff and strict mypy passed. Fault injection covers every workflow node, bounded retry/resume, timeout exhaustion, active-lease conflicts, terminal replay, committed replay, and no duplicate invocation. The PostgreSQL integration test verifies encrypted state at rest, authenticated replay, conflicting-input rejection, one Alembic head, migration constraints, and the tenant-scoped repository boundary.
+- Follow-up: Build the versioned scenario dataset and enforced multi-metric evaluation thresholds in `P2-T010`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

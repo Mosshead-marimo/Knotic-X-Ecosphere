@@ -24,6 +24,7 @@ from .repositories import (
     SessionRepository,
     ToolRepository,
 )
+from .workflow_checkpoints import WorkflowCheckpointRepository
 
 
 class UnitOfWork:
@@ -136,6 +137,10 @@ class UnitOfWork:
     @property
     def idempotency(self) -> IdempotencyRepository:
         return IdempotencyRepository(self._require_connection(), self.tenant_id)
+
+    @property
+    def workflow_checkpoints(self) -> WorkflowCheckpointRepository:
+        return WorkflowCheckpointRepository(self._require_connection(), self.tenant_id)
 
     def _require_connection(self) -> Connection:
         if self._connection is None:

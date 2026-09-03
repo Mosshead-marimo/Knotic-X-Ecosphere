@@ -67,7 +67,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Responses do not invent pricing, availability, integrations, CRM state, or completed actions.
 - Verify: Golden outputs, hallucination probes, injection tests, and human rubric evaluation.
 
-### [ ] P2-T009 — Implement graph checkpointing, retries, and safe failures
+### [x] P2-T009 — Implement graph checkpointing, retries, and safe failures
 
 - Dependencies: P2-T001, P2-T008.
 - Implement: Per-session checkpoints, bounded retries, timeouts, resumable failures, duplicate-turn protection, and deterministic terminal states.

@@ -53,6 +53,8 @@ from .execution import (
 )
 from .graph import build_sales_graph
 from .memory_node import update_memory_node
+from .mcp_boundary import grounded_facts_from_result
+from .mcp_client import HttpMcpClient, McpCallContext, McpClient, McpToolResult
 from .next_action import decide_next_action, next_best_action_node
 from .objections import detect_objection_node, objection_policy
 from .qualification import assess_qualification, buying_stage_for_score, update_qualification_node
@@ -80,6 +82,9 @@ __all__ = [
     "GroundedFact",
     "GroundingDomain",
     "ModelTurnUnderstanding",
+    "McpCallContext",
+    "McpClient",
+    "McpToolResult",
     "NextActionDecision",
     "NodeContract",
     "NodeKind",
@@ -89,6 +94,7 @@ __all__ = [
     "ObjectionPolicyAction",
     "ObjectionRisk",
     "OpenAIResponseGeneration",
+    "HttpMcpClient",
     "OpenAITurnUnderstanding",
     "PostgresWorkflowCheckpointStore",
     "QualificationAssessment",
@@ -124,6 +130,7 @@ __all__ = [
     "detect_objection_node",
     "execute_turn",
     "generate_response_node",
+    "grounded_facts_from_result",
     "next_best_action_node",
     "objection_policy",
     "plan_response",

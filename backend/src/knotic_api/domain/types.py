@@ -13,10 +13,9 @@ class SessionStatus(StrEnum):
 
 class BuyingStage(StrEnum):
     NURTURE = "NURTURE"
-    DISCOVERY = "DISCOVERY"
-    QUALIFIED = "QUALIFIED"
     FOLLOWUP = "FOLLOWUP"
-    HANDOFF = "HANDOFF"
+    SALES_QUALIFIED = "SALES_QUALIFIED"
+    HIGH_INTENT = "HIGH_INTENT"
 
 
 class NextBestAction(StrEnum):

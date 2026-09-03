@@ -582,6 +582,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Reviewed the linked Agora Start with AI guide and Voice AI recipes catalog plus the relevant official recipe pages; checked all added repository-relative documentation links. The X source returned HTTP 403 to the web reader, so its message content is represented from the user-provided text and the link is retained as a source requiring browser access.
 - Follow-up: Revalidate provider availability, promotional entitlement, regions, quotas, billing, and current recipe behavior in the Agora Console and official documentation when Phase 4 implementation begins.
 
+### 2026-09-03 — Implemented grounded response planning and generation
+
+- Phase: 2 (`P2-T008`, GitHub #61)
+- Status: Added
+- Files: grounding/citation/response-plan contracts, versioned generation prompt, stateless OpenAI Responses adapter, deterministic safe responses, LangGraph node integration, golden/security/rubric tests, backend documentation, Phase 2 task status
+- Summary: Added a pure response-planning boundary that filters typed server-validated facts by the approved FR-10 action and limits voice plans to four talking points. Required grounding with no evidence now returns deterministic uncertainty language without a model call. Booking, follow-up, and handoff use fixed pre-confirmation language; closing is silent. The generation adapter sends only the approved plan through stateless structured output and excludes raw customer content. Validation rejects unknown or missing citations, more than three sentences, ungrounded prices/capabilities, and claims that a business action completed without a validated provider result. A recorded four-part human review rubric requires full grounding and transaction-safety scores.
+- Verification: Ruff and strict mypy passed. The complete non-integration backend suite passed, including golden plan/disposition cases, missing-grounding behavior, structured-output and non-retention settings, prompt-injection isolation, hallucinated pricing/integration probes, unknown/missing citations, transactional wording, provenance, replay, and human-rubric approval.
+- Follow-up: Add durable per-session checkpoints, bounded retry policy, and duplicate-turn protection in `P2-T009`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

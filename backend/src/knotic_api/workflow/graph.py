@@ -15,6 +15,7 @@ from .memory_node import update_memory_node
 from .next_action import next_best_action_node
 from .objections import detect_objection_node
 from .qualification import update_qualification_node
+from .response_generation import ResponseGenerationPort, generate_response_node
 from .routing import ROUTE_NODES, route_destination, route_turn_node
 from .understanding import TurnUnderstandingPort, understand_turn_node
 
@@ -29,7 +30,9 @@ def _contract_node(node: WorkflowNode) -> Callable[[SalesGraphState], StateUpdat
 
 
 def build_sales_graph(
-    *, understanding_port: TurnUnderstandingPort | None = None
+    *,
+    understanding_port: TurnUnderstandingPort | None = None,
+    response_generation_port: ResponseGenerationPort | None = None,
 ) -> CompiledStateGraph[SalesGraphState, None, SalesGraphState, SalesGraphState]:
     """Build the authoritative, side-effect-free Phase 2 contract topology."""
 
@@ -48,6 +51,8 @@ def build_sales_graph(
             if node == WorkflowNode.UPDATE_QUALIFICATION
             else next_best_action_node
             if node == WorkflowNode.NEXT_BEST_ACTION
+            else partial(generate_response_node, port=response_generation_port)
+            if node == WorkflowNode.GENERATE_RESPONSE and response_generation_port is not None
             else _contract_node(node)
         )
         builder.add_node(node.value, cast(Any, action))

@@ -8,6 +8,7 @@ const gates = [
   ["npm", ["run", "lint:python"]],
   ["npm", ["run", "typecheck:python"]],
   ["npm", ["run", "test:python"]],
+  ["npm", ["run", "evaluate:conversations"]],
   ["npm", ["run", "validate:api-contract"]],
   ["npm", ["run", "validate:data-model"]],
   ["npm", ["run", "validate:mcp-contract"]],

@@ -30,6 +30,7 @@
     "lint:python": "uv run ruff check backend mcp packages",
     "typecheck:python": "uv run mypy",
     "test:python": "uv run pytest",
+    "evaluate:conversations": "uv run --project backend python -m knotic_api.workflow.evaluation",
     "validate:api-contract": "node scripts/validate-api-contract.mjs",
     "validate:data-model": "node scripts/validate-data-model.mjs",
     "validate:mcp-contract": "node scripts/validate-mcp-contract.mjs",

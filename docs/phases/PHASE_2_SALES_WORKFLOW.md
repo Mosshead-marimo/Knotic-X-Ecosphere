@@ -53,7 +53,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Scores are bounded 0–100, explainable, deterministic, and historically auditable.
 - Verify: Boundary tests at 39/40/59/60/74/75 and property-based score tests.
 
-### [ ] P2-T007 — Implement next-best-action engine
+### [x] P2-T007 — Implement next-best-action engine
 
 - Dependencies: P2-T004, P2-T005, P2-T006.
 - Implement: Deterministic policy for every FR-10 action, precedence, required data, approval requirements, and safe fallback.

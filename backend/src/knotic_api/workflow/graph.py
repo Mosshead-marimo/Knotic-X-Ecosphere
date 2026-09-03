@@ -12,6 +12,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from .contracts import NODE_CONTRACTS, SalesGraphState, StateUpdate, WorkflowNode, validate_node_update
 from .memory_node import update_memory_node
+from .next_action import next_best_action_node
 from .objections import detect_objection_node
 from .qualification import update_qualification_node
 from .routing import ROUTE_NODES, route_destination, route_turn_node
@@ -45,6 +46,8 @@ def build_sales_graph(
             if node == WorkflowNode.DETECT_OBJECTION
             else update_qualification_node
             if node == WorkflowNode.UPDATE_QUALIFICATION
+            else next_best_action_node
+            if node == WorkflowNode.NEXT_BEST_ACTION
             else _contract_node(node)
         )
         builder.add_node(node.value, cast(Any, action))

@@ -57,8 +57,8 @@ Use one of these values for each phase: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`,
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Contracts and project foundation | IN_PROGRESS |
-| 1 | Core backend, state, and persistence | NOT_STARTED |
-| 2 | Adaptive sales workflow | NOT_STARTED |
+| 1 | Core backend, state, and persistence | COMPLETE |
+| 2 | Adaptive sales workflow | COMPLETE |
 | 3 | MCP tools and grounded knowledge | NOT_STARTED |
 | 4 | Realtime Agora voice experience | NOT_STARTED |
 | 5 | CRM, calendar, follow-up, and handoff | NOT_STARTED |
@@ -599,6 +599,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Added one forced-RLS checkpoint row per tenant/session/turn with an input hash, bounded lease, attempt counter, deterministic status, safe failure metadata, and authenticated encrypted committed graph state. The executor returns committed or terminal records before invoking LangGraph, so replay cannot duplicate graph-side effects. Retryable failures resume for at most the configured one-to-three attempts; non-retryable failures, exhausted retries, unexpected exceptions, active concurrent leases, and deadlines resolve to explicit safe outcomes. A bounded shared worker pool enforces whole-attempt deadlines while provider adapters retain tighter I/O timeouts.
 - Verification: Ruff and strict mypy passed. Fault injection covers every workflow node, bounded retry/resume, timeout exhaustion, active-lease conflicts, terminal replay, committed replay, and no duplicate invocation. The PostgreSQL integration test verifies encrypted state at rest, authenticated replay, conflicting-input rejection, one Alembic head, migration constraints, and the tenant-scoped repository boundary.
 - Follow-up: Build the versioned scenario dataset and enforced multi-metric evaluation thresholds in `P2-T010`.
+
+### 2026-09-03 — Added the versioned conversation evaluation gate
+
+- Phase: 2 (`P2-T010`, GitHub #63)
+- Status: Added
+- Files: versioned conversation corpus/reference predictions, typed evaluation engine/CLI, CI quality-gate command, evaluation operating guide, regression tests, backend documentation, Phase 2 task status
+- Summary: Added the `sales-conversations-v1` offline corpus covering discovery, confirmed revision, objections, pricing, competitors, demo, follow-up, handoff, closing, unsafe requests, and provider failure. The deterministic evaluator requires one version-matched prediction per case and measures routing, structured extraction, qualification score/stage, next-action policy, supported-citation grounding, and concise transaction-safe response quality. Approved thresholds require 1.00 for the first five metrics and 0.95 for response quality. The command emits a stable JSON report and returns nonzero below threshold, and now runs explicitly in the required quality gate.
+- Verification: The reference evaluation reproduced six 1.00 metric scores. Regression tests proved that a wrong route, unknown citation, and unconfirmed follow-up success claim each fail their corresponding threshold. Ruff and strict mypy passed; all 154 non-integration tests and the exact 23-test CI persistence suite passed against PostgreSQL 17/pgvector and Redis 8.8.1. The direct evaluation CLI, API/data/MCP/operations validators, migration head, repository secret scans, and whitespace checks passed.
+- Follow-up: Phase 2 is ready for its stacked review sequence; Phase 3 may consume only committed replay-safe state and governed MCP action boundaries.
 
 ## Maintenance rules
 

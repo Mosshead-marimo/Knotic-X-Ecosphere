@@ -1,0 +1,16 @@
+{
+  "dataset_version": "sales-conversations-v1",
+  "predictions": [
+    {"case_id":"discovery_team_goal","route":"DISCOVERY","entities":{"use_cases":"customer support"},"score":25,"stage":"NURTURE","action":"ASK_DISCOVERY","response_text":"What outcome would make customer support meaningfully better for your team?"},
+    {"case_id":"revision_user_count","route":"CHANGE_REQUIREMENT","entities":{"users":"250"},"score":40,"stage":"FOLLOWUP","action":"UPDATE_REQUIREMENT","response_text":"I understand that the requirement is now 250 users. Is that the expected first rollout size?"},
+    {"case_id":"objection_security","route":"OBJECTION","entities":{},"score":60,"stage":"SALES_QUALIFIED","action":"HANDLE_OBJECTION","response_text":"The approved security guide describes encryption in transit and at rest. Which control would you like to review first?","citation_ids":["cite_security01"],"supported_citation_ids":["cite_security01"]},
+    {"case_id":"pricing_annual","route":"PRICING","entities":{"budget":"1200 USD"},"score":65,"stage":"SALES_QUALIFIED","action":"GET_PRICING","response_text":"The approved quote lists the annual plan at USD 1200. I can explain what that quote includes.","citation_ids":["cite_pricing01"],"supported_citation_ids":["cite_pricing01"]},
+    {"case_id":"competitor_comparison","route":"COMPETITOR_COMPARISON","entities":{"competitors":"Acme"},"score":45,"stage":"FOLLOWUP","action":"COMPARE_COMPETITOR","response_text":"The reviewed comparison covers workflow controls for both products. Which capability matters most to you?","citation_ids":["cite_compare01"],"supported_citation_ids":["cite_compare01"]},
+    {"case_id":"demo_request","route":"DEMO_REQUEST","entities":{},"score":70,"stage":"SALES_QUALIFIED","action":"OFFER_DEMO","response_text":"A demo sounds useful. Would you like to choose a time?"},
+    {"case_id":"follow_up_email","route":"FOLLOWUP","entities":{},"score":55,"stage":"FOLLOWUP","action":"CREATE_FOLLOWUP","response_text":"I can arrange a follow-up. Which approved channel should I use?"},
+    {"case_id":"human_handoff","route":"HUMAN_HANDOFF","entities":{},"score":75,"stage":"HIGH_INTENT","action":"ESCALATE_HUMAN","response_text":"I'll request a human teammate now."},
+    {"case_id":"closing_goodbye","route":"CLOSING","entities":{},"score":30,"stage":"NURTURE","action":"END_CALL","response_text":null},
+    {"case_id":"unsafe_override","route":"HUMAN_HANDOFF","entities":{},"score":20,"stage":"NURTURE","action":"ESCALATE_HUMAN","response_text":"I can't bypass that control. I'll request a human teammate to help."},
+    {"case_id":"provider_failure","route":"CLARIFICATION","entities":{},"score":0,"stage":"NURTURE","action":"ASK_DISCOVERY","response_text":"I couldn't verify that safely. Could you rephrase what you need?"}
+  ]
+}

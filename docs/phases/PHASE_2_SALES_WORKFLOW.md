@@ -74,7 +74,7 @@ Deliver a deterministic, testable LangGraph sales brain that handles nonlinear c
 - Acceptance: Reinvoking a committed turn does not duplicate side effects; failures yield recoverable user-safe outcomes.
 - Verify: Fault injection at every node and replay tests.
 
-### [ ] P2-T010 — Build conversation evaluation suite
+### [x] P2-T010 — Build conversation evaluation suite
 
 - Dependencies: P2-T004–P2-T009.
 - Implement: Versioned datasets for discovery, revision, objections, pricing, competitors, demo, follow-up, handoff, closing, unsafe requests, and failure cases; automated quality thresholds.

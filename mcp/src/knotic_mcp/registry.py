@@ -64,6 +64,10 @@ def _is_nonempty_str(value: object) -> bool:
     return isinstance(value, str) and len(value.strip()) >= 1
 
 
+def _in_bounds(value: object, maximum: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= maximum
+
+
 def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]) -> bool:
     """Small fail-closed validator until generated registry schemas are wired in."""
     if definition.name == "knowledge.search":
@@ -131,18 +135,15 @@ def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]
             "purchase_intent": 10,
         }
         return set(arguments) == set(bounds) and all(
-            isinstance(arguments[name], int)
-            and not isinstance(arguments[name], bool)
-            and 0 <= arguments[name] <= maximum
-            for name, maximum in bounds.items()
+            _in_bounds(arguments[name], maximum) for name, maximum in bounds.items()
         )
     if definition.name == "lead.next_action":
         return (
             set(arguments) == {"intent", "stage", "explicit_request"}
             and isinstance(arguments["intent"], str)
-            and arguments["intent"]
+            and arguments["intent"] != ""
             and isinstance(arguments["stage"], str)
-            and arguments["stage"]
+            and arguments["stage"] != ""
             and (arguments["explicit_request"] is None or isinstance(arguments["explicit_request"], str))
         )
     return bool(arguments) or not definition.side_effect

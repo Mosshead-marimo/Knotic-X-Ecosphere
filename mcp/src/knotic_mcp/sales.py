@@ -120,8 +120,18 @@ class PricingCatalog:
     @classmethod
     def from_payload(cls, payload: dict[str, object]) -> PricingCatalog:
         try:
-            plans = {
-                str(item["plan_id"]): PricingPlan(
+            raw_plans = payload["plans"]
+            if not isinstance(raw_plans, list):
+                raise ValueError("pricing catalog payload is malformed")
+            plans: dict[str, PricingPlan] = {}
+            for raw_item in raw_plans:
+                if not isinstance(raw_item, dict):
+                    raise ValueError("pricing catalog payload is malformed")
+                item: dict[str, object] = raw_item
+                raw_features = item.get("features", ())
+                if not isinstance(raw_features, list | tuple):
+                    raise ValueError("pricing catalog payload is malformed")
+                plans[str(item["plan_id"])] = PricingPlan(
                     plan_id=str(item["plan_id"]),
                     display_name=str(item["display_name"]),
                     currency=str(item["currency"]),
@@ -132,10 +142,8 @@ class PricingCatalog:
                     effective_at=datetime.fromisoformat(str(item["effective_at"])),
                     expires_at=datetime.fromisoformat(str(item["expires_at"])) if item.get("expires_at") else None,
                     source=str(item["source"]),
-                    features=tuple(str(feature) for feature in item.get("features", ())),  # type: ignore[union-attr]
+                    features=tuple(str(feature) for feature in raw_features),
                 )
-                for item in payload["plans"]  # type: ignore[union-attr]
-            }
         except (KeyError, InvalidOperation, ValueError) as error:
             raise ValueError("pricing catalog payload is malformed") from error
         return cls(plans, source_version=str(payload["source_version"]))

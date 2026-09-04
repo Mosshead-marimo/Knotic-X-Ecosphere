@@ -65,7 +65,9 @@ class KnowledgeStore:
 
 
 class KnowledgeIngestionService:
-    def __init__(self, store: KnowledgeStore, embeddings: EmbeddingPort | None = None, *, chunk_size: int = 900) -> None:
+    def __init__(
+        self, store: KnowledgeStore, embeddings: EmbeddingPort | None = None, *, chunk_size: int = 900
+    ) -> None:
         self._store = store
         self._embeddings = embeddings or HashEmbedding()
         self._chunk_size = chunk_size
@@ -73,7 +75,9 @@ class KnowledgeIngestionService:
     def register_source(self, source: ApprovedSource) -> None:
         self._store.sources[(source.tenant_id, source.source_uri)] = source
 
-    def ingest(self, *, tenant_id: UUID, source_uri: str, title: str, domain: str, content_type: str, body: bytes) -> int:
+    def ingest(
+        self, *, tenant_id: UUID, source_uri: str, title: str, domain: str, content_type: str, body: bytes
+    ) -> int:
         source = self._store.sources.get((tenant_id, source_uri))
         if source is None or not source.active or domain not in source.domains:
             raise ValueError("source is not approved for this tenant and domain")
@@ -85,7 +89,9 @@ class KnowledgeIngestionService:
             raise ValueError("document must be valid UTF-8 text") from error
         if not cleaned:
             raise ValueError("document has no indexable content")
-        previous = [item for item in self._store.chunks if item.tenant_id == tenant_id and item.source_uri == source_uri]
+        previous = [
+            item for item in self._store.chunks if item.tenant_id == tenant_id and item.source_uri == source_uri
+        ]
         content_hash = hashlib.sha256(cleaned.encode()).hexdigest()
         if any(item.content_hash == content_hash and item.tombstoned_at is None for item in previous):
             return max(item.document_version for item in previous)
@@ -94,27 +100,40 @@ class KnowledgeIngestionService:
         now = datetime.now(UTC)
         self._store.chunks.extend(
             KnowledgeChunk(
-                id=f"{content_hash[:16]}-{ordinal}", tenant_id=tenant_id, source_uri=source_uri,
-                document_version=document_version, domain=domain, title=title, text=fragment,
-                content_hash=content_hash, embedding=self._embeddings.embed(fragment), effective_at=now,
+                id=f"{content_hash[:16]}-{ordinal}",
+                tenant_id=tenant_id,
+                source_uri=source_uri,
+                document_version=document_version,
+                domain=domain,
+                title=title,
+                text=fragment,
+                content_hash=content_hash,
+                embedding=self._embeddings.embed(fragment),
+                effective_at=now,
             )
             for ordinal, fragment in enumerate(_chunks(cleaned, self._chunk_size))
         )
-        self._store.reindex_jobs.append({"tenant_id": str(tenant_id), "source_uri": source_uri, "version": str(document_version)})
+        self._store.reindex_jobs.append(
+            {"tenant_id": str(tenant_id), "source_uri": source_uri, "version": str(document_version)}
+        )
         return document_version
 
     def tombstone(self, *, tenant_id: UUID, source_uri: str) -> None:
         now = datetime.now(UTC)
         self._store.chunks[:] = [
-            item if item.tenant_id != tenant_id or item.source_uri != source_uri else KnowledgeChunk(**{**asdict(item), "tombstoned_at": now})
+            item
+            if item.tenant_id != tenant_id or item.source_uri != source_uri
+            else KnowledgeChunk(**{**asdict(item), "tombstoned_at": now})
             for item in self._store.chunks
         ]
 
 
 def _chunks(text: str, size: int) -> list[str]:
-    words, output, current = text.split(), [], []
+    words: list[str] = text.split()
+    output: list[str] = []
+    current: list[str] = []
     for word in words:
-        if len(" ".join(current + [word])) > size and current:
+        if len(" ".join([*current, word])) > size and current:
             output.append(" ".join(current))
             current = []
         current.append(word)
@@ -138,7 +157,9 @@ class PgvectorRetrievalService:
         self._store = store
         self._embeddings = embeddings or HashEmbedding()
 
-    def search(self, *, tenant_id: UUID, query: str, domains: set[str], limit: int, threshold: float = 0.15) -> list[RetrievalMatch]:
+    def search(
+        self, *, tenant_id: UUID, query: str, domains: set[str], limit: int, threshold: float = 0.15
+    ) -> list[RetrievalMatch]:
         if not query.strip() or not 1 <= limit <= 20:
             raise ValueError("query and result limit are invalid")
         now, query_embedding = datetime.now(UTC), self._embeddings.embed(query)
@@ -146,14 +167,34 @@ class PgvectorRetrievalService:
         ranked: list[RetrievalMatch] = []
         for chunk in self._store.chunks:
             source = self._store.sources.get((tenant_id, chunk.source_uri))
-            if (chunk.tenant_id != tenant_id or source is None or not source.active or chunk.domain not in domains
-                    or chunk.tombstoned_at is not None or chunk.effective_at > now or (chunk.expires_at and chunk.expires_at <= now)):
+            if (
+                chunk.tenant_id != tenant_id
+                or source is None
+                or not source.active
+                or chunk.domain not in domains
+                or chunk.tombstoned_at is not None
+                or chunk.effective_at > now
+                or (chunk.expires_at and chunk.expires_at <= now)
+            ):
                 continue
             lexical = len(query_words & set(re.findall(r"[a-z0-9]+", chunk.text.casefold()))) / max(len(query_words), 1)
             vector = sum(left * right for left, right in zip(query_embedding, chunk.embedding, strict=True))
             score = 0.35 * lexical + 0.65 * vector
             if score >= threshold:
-                ranked.append(RetrievalMatch(chunk.id, chunk.text, score, {"source_uri": chunk.source_uri, "title": chunk.title, "chunk_id": chunk.id, "document_version": str(chunk.document_version)}))
+                ranked.append(
+                    RetrievalMatch(
+                        chunk.id,
+                        chunk.text,
+                        score,
+                        {
+                            "source_uri": chunk.source_uri,
+                            "title": chunk.title,
+                            "chunk_id": chunk.id,
+                            "document_version": str(chunk.document_version),
+                            "classification": source.classification,
+                        },
+                    )
+                )
         return sorted(ranked, key=lambda item: (-item.score, item.chunk_id))[:limit]
 
 
@@ -177,7 +218,7 @@ class PostgresPgvectorRetrievalService:
             raise ValueError("query, domains, and result limit are required")
         vector = "[" + ",".join(str(value) for value in self._embeddings.embed(query)) + "]"
         statement = """
-            select c.id, c.approved_text, d.source_uri, d.title, d.document_version,
+            select c.id, c.approved_text, d.source_uri, d.title, d.document_version, d.classification,
                    1 - (e.embedding <=> %(embedding)s::vector) as score
               from knowledge_embeddings e
               join knowledge_chunks c on c.tenant_id = e.tenant_id and c.id = e.chunk_id
@@ -215,7 +256,117 @@ class PostgresPgvectorRetrievalService:
                     "title": title,
                     "chunk_id": str(chunk_id),
                     "document_version": str(document_version),
+                    "classification": classification,
                 },
             )
-            for chunk_id, text, source_uri, title, document_version, score in rows
+            for chunk_id, text, source_uri, title, document_version, classification, score in rows
         ]
+
+
+class RetrievalPort(Protocol):
+    def search(
+        self, *, tenant_id: UUID, query: str, domains: set[str], limit: int, threshold: float = 0.15
+    ) -> list[RetrievalMatch]: ...
+
+
+def _support_status(text: str) -> str:
+    lowered = text.casefold()
+    if any(phrase in lowered for phrase in ("not supported", "unsupported", "does not support", "no support")):
+        return "UNSUPPORTED"
+    if any(phrase in lowered for phrase in ("planned", "roadmap", "coming soon")):
+        return "PLANNED"
+    if any(phrase in lowered for phrase in ("partial", "limited support", "in beta", "beta support")):
+        return "PARTIAL"
+    if any(phrase in lowered for phrase in ("supports", "supported", "integrates with", "integration with")):
+        return "SUPPORTED"
+    return "UNKNOWN"
+
+
+class KnowledgeQueryService:
+    """Domain-shaped read tools built on grounded retrieval.
+
+    Every method returns ``None`` (an explicit miss) rather than inferring a business fact when
+    no approved, current evidence supports the request. Every non-miss result carries citations
+    traceable to an approved source and chunk.
+    """
+
+    def __init__(self, retrieval: RetrievalPort) -> None:
+        self._retrieval = retrieval
+
+    def search_products(self, *, tenant_id: UUID, query: str, limit: int) -> dict[str, object] | None:
+        matches = self._retrieval.search(tenant_id=tenant_id, query=query, domains={"PRODUCT"}, limit=limit)
+        if not matches:
+            return None
+        return {
+            "products": [
+                {"name": match.citation["title"], "summary": match.text, "score": match.score} for match in matches
+            ],
+            "citations": [dict(match.citation) for match in matches],
+        }
+
+    def get_feature(self, *, tenant_id: UUID, feature: str) -> dict[str, object] | None:
+        matches = self._retrieval.search(tenant_id=tenant_id, query=feature, domains={"PRODUCT"}, limit=3)
+        if not matches:
+            return None
+        return {
+            "feature": feature,
+            "description": matches[0].text,
+            "citations": [dict(match.citation) for match in matches],
+        }
+
+    def get_integration(self, *, tenant_id: UUID, integration: str) -> dict[str, object] | None:
+        matches = self._retrieval.search(
+            tenant_id=tenant_id, query=integration, domains={"INTEGRATION", "PRODUCT"}, limit=3
+        )
+        if not matches:
+            return None
+        return {
+            "integration": integration,
+            "support_status": _support_status(matches[0].text),
+            "citations": [dict(match.citation) for match in matches],
+        }
+
+    def compare_competitor(
+        self, *, tenant_id: UUID, competitor: str, dimensions: list[str]
+    ) -> dict[str, object] | None:
+        baseline = self._retrieval.search(tenant_id=tenant_id, query=competitor, domains={"COMPETITOR"}, limit=5)
+        comparisons: list[dict[str, object]] = []
+        unknowns: list[str] = []
+        citations: dict[str, dict[str, str]] = {}
+        for dimension in dimensions:
+            matches = self._retrieval.search(
+                tenant_id=tenant_id, query=f"{competitor} {dimension}", domains={"COMPETITOR"}, limit=1
+            )
+            if matches:
+                comparisons.append(
+                    {"dimension": dimension, "statement": matches[0].text, "citation": dict(matches[0].citation)}
+                )
+                citations[matches[0].chunk_id] = dict(matches[0].citation)
+            else:
+                unknowns.append(dimension)
+        for match in baseline:
+            citations.setdefault(match.chunk_id, dict(match.citation))
+        if not comparisons and not baseline:
+            return None
+        return {
+            "competitor": competitor,
+            "comparisons": comparisons,
+            "citations": list(citations.values()),
+            "unknowns": unknowns,
+        }
+
+    def get_security_information(
+        self, *, tenant_id: UUID, topic: str, customer_clearance: str | None
+    ) -> tuple[dict[str, object] | None, bool]:
+        """Returns ``(result, permission_denied)``; ``result`` is ``None`` on a miss or denial."""
+        matches = self._retrieval.search(tenant_id=tenant_id, query=topic, domains={"SECURITY"}, limit=3)
+        if not matches:
+            return None, False
+        classification = matches[0].citation.get("classification", "PUBLIC")
+        if classification == "CUSTOMER_CONFIDENTIAL" and customer_clearance != "CUSTOMER_CONFIDENTIAL":
+            return None, True
+        return {
+            "answer": matches[0].text,
+            "classification": classification,
+            "citations": [dict(match.citation) for match in matches],
+        }, False

@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import Protocol
 
 from .contracts import ToolEnvelope, ToolInvocation, TrustedContext
 
@@ -44,6 +44,7 @@ class AuditRecord:
     status: str
     error_code: str | None
     metadata: dict[str, object]
+    cache_status: str = "MISS"
 
 
 class AuditSink(Protocol):
@@ -82,6 +83,7 @@ def audit_record(
     approval_decision: str,
     latency_ms: int | None,
     idempotency_key_hmac: str | None,
+    cache_status: str = "MISS",
 ) -> AuditRecord:
     return AuditRecord(
         occurred_at=datetime.now(UTC),
@@ -99,4 +101,5 @@ def audit_record(
         status=envelope.status.value if envelope else "REJECTED",
         error_code=envelope.error.code if envelope and envelope.error else None,
         metadata=redact({"arguments": invocation.arguments, "data": envelope.data if envelope else None}),  # type: ignore[arg-type]
+        cache_status=cache_status,
     )

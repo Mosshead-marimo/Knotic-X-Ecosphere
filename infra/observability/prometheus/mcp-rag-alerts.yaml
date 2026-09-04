@@ -1,0 +1,43 @@
+groups:
+  - name: knotic-mcp-rag
+    rules:
+      - alert: KnowledgeToolLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(knotic_mcp_tool_call_duration_seconds_bucket{tool=~"knowledge.search|product.search|product.get_feature|product.get_integration|competitor.compare|security.get_information"}[5m]))) > 2.0
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Knowledge-tool call p95 latency exceeds 2.0 seconds"}
+      - alert: SalesToolLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(knotic_mcp_tool_call_duration_seconds_bucket{tool=~"pricing.get_quote|pricing.compare_plans|lead.qualify|lead.next_action"}[5m]))) > 1.0
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Sales-tool call p95 latency exceeds 1.0 second"}
+      - alert: McpToolErrorRateHigh
+        expr: sum(rate(knotic_mcp_tool_calls_total{status="FAILED"}[10m])) / clamp_min(sum(rate(knotic_mcp_tool_calls_total[10m])), 0.000001) > 0.02
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "MCP tool failure ratio exceeds 2 percent"}
+      - alert: KnowledgeMissRateHigh
+        expr: sum(rate(knotic_mcp_knowledge_misses_total[15m])) / clamp_min(sum(rate(knotic_mcp_knowledge_queries_total[15m])), 0.000001) > 0.20
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "Knowledge retrieval no-grounded-result ratio exceeds 20 percent"}
+      - alert: McpCacheHitRateLow
+        expr: sum(rate(knotic_mcp_cache_results_total{status="HIT"}[15m])) / clamp_min(sum(rate(knotic_mcp_cache_results_total{status=~"HIT|MISS|STALE"}[15m])), 0.000001) < 0.50
+        for: 15m
+        labels: {severity: info}
+        annotations: {summary: "MCP tool cache hit ratio is below 50 percent"}
+      - alert: McpDegradedServingHigh
+        expr: sum(rate(knotic_mcp_cache_results_total{status="STALE"}[15m])) / clamp_min(sum(rate(knotic_mcp_cache_results_total{status=~"HIT|MISS|STALE"}[15m])), 0.000001) > 0.05
+        for: 10m
+        labels: {severity: critical}
+        annotations: {summary: "MCP is serving stale-if-safe results for more than 5 percent of calls"}
+      - alert: McpPolicyDenialRateHigh
+        expr: sum(rate(knotic_mcp_policy_denials_total[10m])) / clamp_min(sum(rate(knotic_mcp_tool_calls_total[10m])), 0.000001) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "MCP policy/scope/approval denial ratio exceeds 5 percent"}
+      - alert: McpProviderDegraded
+        expr: knotic_mcp_provider_health == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "An MCP provider dependency's circuit is open (degraded)"}

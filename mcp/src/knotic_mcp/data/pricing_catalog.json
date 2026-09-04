@@ -1,0 +1,44 @@
+{
+  "source_version": "2026.09.1",
+  "plans": [
+    {
+      "plan_id": "STARTER",
+      "display_name": "Starter",
+      "currency": "USD",
+      "monthly_price_per_user": "19.00",
+      "annual_price_per_user": "190.00",
+      "minimum_users": 1,
+      "region": "GLOBAL",
+      "effective_at": "2026-01-01T00:00:00+00:00",
+      "expires_at": "2027-01-01T00:00:00+00:00",
+      "source": "pricing-catalog-v1",
+      "features": ["Core CRM sync", "Email support"]
+    },
+    {
+      "plan_id": "PRO",
+      "display_name": "Professional",
+      "currency": "USD",
+      "monthly_price_per_user": "49.00",
+      "annual_price_per_user": "490.00",
+      "minimum_users": 5,
+      "region": "GLOBAL",
+      "effective_at": "2026-01-01T00:00:00+00:00",
+      "expires_at": "2027-01-01T00:00:00+00:00",
+      "source": "pricing-catalog-v1",
+      "features": ["Core CRM sync", "Priority support", "Advanced analytics"]
+    },
+    {
+      "plan_id": "ENTERPRISE",
+      "display_name": "Enterprise",
+      "currency": "USD",
+      "monthly_price_per_user": "89.00",
+      "annual_price_per_user": "890.00",
+      "minimum_users": 25,
+      "region": "GLOBAL",
+      "effective_at": "2026-01-01T00:00:00+00:00",
+      "expires_at": "2027-01-01T00:00:00+00:00",
+      "source": "pricing-catalog-v1",
+      "features": ["Core CRM sync", "Priority support", "Advanced analytics", "SSO and SCIM", "Dedicated success manager"]
+    }
+  ]
+}

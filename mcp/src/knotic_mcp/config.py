@@ -16,6 +16,7 @@ _REQUIRED_SECRETS = {
 }
 _OPTIONAL_SECRETS = {
     "previous_auth_token": "KNOTIC_MCP_AUTH_TOKEN_PREVIOUS",
+    "metrics_auth_token": "KNOTIC_METRICS_AUTH_TOKEN",
 }
 _PLACEHOLDERS = ("change-me", "replace-me", "example-only", "insert-secret")
 
@@ -52,6 +53,8 @@ class McpSettings(CommonSettings):
     redis_url: SecretStr
     auth_token: SecretStr
     previous_auth_token: SecretStr | None = None
+    metrics_auth_token: SecretStr | None = None
+    otel_exporter_otlp_endpoint: str | None = Field(default=None, validation_alias="KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT")
 
     @field_validator("database_url")
     @classmethod
@@ -74,6 +77,11 @@ class McpSettings(CommonSettings):
     def validate_auth_token(cls, value: SecretStr | None) -> SecretStr | None:
         return _validate_secret("MCP authentication token", value, 32) if value is not None else None
 
+    @field_validator("metrics_auth_token")
+    @classmethod
+    def validate_metrics_auth_token(cls, value: SecretStr | None) -> SecretStr | None:
+        return _validate_secret("KNOTIC_METRICS_AUTH_TOKEN", value, 32) if value is not None else None
+
     @model_validator(mode="after")
     def validate_managed_environment(self) -> "McpSettings":
         if self.environment in {RuntimeEnvironment.STAGING, RuntimeEnvironment.PRODUCTION}:
@@ -82,6 +90,10 @@ class McpSettings(CommonSettings):
             invalid = [host for host in self.allowed_hosts if host == "*" or _is_local_host(host)]
             if invalid:
                 raise ValueError("managed-environment hosts must be explicit non-local hosts")
+            if self.metrics_auth_token is None:
+                raise ValueError("KNOTIC_METRICS_AUTH_TOKEN is required in staging and production")
+            if self.otel_exporter_otlp_endpoint is None:
+                raise ValueError("KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT is required in staging and production")
         return self
 
 

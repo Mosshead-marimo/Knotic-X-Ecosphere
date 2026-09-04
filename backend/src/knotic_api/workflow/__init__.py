@@ -52,9 +52,17 @@ from .execution import (
     execute_turn,
 )
 from .graph import build_sales_graph
-from .memory_node import update_memory_node
 from .mcp_boundary import grounded_facts_from_result
-from .mcp_client import HttpMcpClient, McpCallContext, McpClient, McpToolResult
+from .mcp_client import (
+    ALLOWED_TOOLS,
+    TOOL_SCOPES,
+    HttpMcpClient,
+    McpCallContext,
+    McpClient,
+    McpToolResult,
+    least_privilege_scopes,
+)
+from .memory_node import update_memory_node
 from .next_action import decide_next_action, next_best_action_node
 from .objections import detect_objection_node, objection_policy
 from .qualification import assess_qualification, buying_stage_for_score, update_qualification_node
@@ -69,8 +77,10 @@ from .routing import INTENT_ROUTES, ROUTE_NODES, route_destination, route_turn_n
 from .understanding import OpenAITurnUnderstanding, TurnUnderstandingPort, understand_turn_node
 
 __all__ = [
+    "ALLOWED_TOOLS",
     "INTENT_ROUTES",
     "ROUTE_NODES",
+    "TOOL_SCOPES",
     "ActionInput",
     "ApprovalRequirement",
     "BoundedGraphInvoker",
@@ -81,10 +91,11 @@ __all__ = [
     "GraphInvocationPort",
     "GroundedFact",
     "GroundingDomain",
-    "ModelTurnUnderstanding",
+    "HttpMcpClient",
     "McpCallContext",
     "McpClient",
     "McpToolResult",
+    "ModelTurnUnderstanding",
     "NextActionDecision",
     "NodeContract",
     "NodeKind",
@@ -94,7 +105,6 @@ __all__ = [
     "ObjectionPolicyAction",
     "ObjectionRisk",
     "OpenAIResponseGeneration",
-    "HttpMcpClient",
     "OpenAITurnUnderstanding",
     "PostgresWorkflowCheckpointStore",
     "QualificationAssessment",
@@ -131,6 +141,7 @@ __all__ = [
     "execute_turn",
     "generate_response_node",
     "grounded_facts_from_result",
+    "least_privilege_scopes",
     "next_best_action_node",
     "objection_policy",
     "plan_response",

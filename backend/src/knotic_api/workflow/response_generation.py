@@ -30,6 +30,7 @@ from .contracts import (
     validate_node_update,
 )
 from .prompts.response_generation import RESPONSE_GENERATION_INSTRUCTIONS, RESPONSE_GENERATION_PROMPT_VERSION
+from .untrusted_content import contains_injection_signal, contains_secret_signal
 
 _ACTION_DOMAIN: Mapping[NextBestAction, frozenset[GroundingDomain]] = {
     NextBestAction.GET_PRICING: frozenset({GroundingDomain.PRICING}),
@@ -124,6 +125,14 @@ def validate_response(plan: ResponsePlan, draft: ModelResponseDraft, provider_re
         raise ValueError("grounded responses must cite at least one approved fact")
     if len(re.findall(r"[.!?](?:\s|$)", draft.text)) > 3:
         raise ValueError("voice response exceeds three sentences")
+    # Output filtering: even though grounded facts are pre-sanitized untrusted content and model
+    # instructions are supplied on a separate channel, this is the last checkpoint before text
+    # reaches the customer. It catches an injection echo or a leaked credential-shaped string
+    # regardless of how it got into the draft.
+    if contains_injection_signal(draft.text):
+        raise ValueError("response echoed a prompt-injection or policy-override attempt")
+    if contains_secret_signal(draft.text):
+        raise ValueError("response contained a credential-shaped value")
     if _PROHIBITED_SUCCESS.search(draft.text):
         raise ValueError("response asserted an unconfirmed business action")
     if _PRICE.search(draft.text) and not any(fact.domain == GroundingDomain.PRICING for fact in plan.facts):

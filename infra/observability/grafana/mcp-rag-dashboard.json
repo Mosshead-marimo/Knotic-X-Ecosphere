@@ -1,0 +1,18 @@
+{
+  "title": "Knotic MCP and RAG",
+  "uid": "knotic-mcp-rag",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["knotic", "mcp", "rag", "slo"],
+  "panels": [
+    {"id": 1, "title": "Tool call p95 latency", "type": "timeseries", "targets": [{"expr": "histogram_quantile(0.95, sum by (le, tool) (rate(knotic_mcp_tool_call_duration_seconds_bucket[5m])))", "legendFormat": "{{tool}}"}]},
+    {"id": 2, "title": "Tool call outcomes", "type": "timeseries", "targets": [{"expr": "sum by (tool, status) (rate(knotic_mcp_tool_calls_total[5m]))", "legendFormat": "{{tool}} / {{status}}"}]},
+    {"id": 3, "title": "Cache outcomes", "type": "timeseries", "targets": [{"expr": "sum by (status) (rate(knotic_mcp_cache_results_total[5m]))", "legendFormat": "{{status}}"}]},
+    {"id": 4, "title": "Knowledge miss ratio", "type": "timeseries", "targets": [{"expr": "sum(rate(knotic_mcp_knowledge_misses_total[15m])) / clamp_min(sum(rate(knotic_mcp_knowledge_queries_total[15m])), 0.000001)"}]},
+    {"id": 5, "title": "Policy denials", "type": "timeseries", "targets": [{"expr": "sum by (tool, code) (rate(knotic_mcp_policy_denials_total[5m]))", "legendFormat": "{{tool}} / {{code}}"}]},
+    {"id": 6, "title": "Provider health", "type": "timeseries", "targets": [{"expr": "knotic_mcp_provider_health", "legendFormat": "{{provider}}"}]},
+    {"id": 7, "title": "Tool errors by code", "type": "timeseries", "targets": [{"expr": "sum by (tool, code) (rate(knotic_mcp_tool_errors_total[5m]))", "legendFormat": "{{tool}} / {{code}}"}]},
+    {"id": 8, "title": "Knowledge index age", "type": "timeseries", "targets": [{"expr": "knotic_mcp_knowledge_index_age_seconds", "legendFormat": "{{domain}}"}]}
+  ]
+}

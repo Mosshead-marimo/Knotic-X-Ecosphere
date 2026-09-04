@@ -55,6 +55,8 @@ Cookies or tokens must not be stored in browser local storage or exposed to Java
 | `POST /api/v1/sessions/{session_id}/turns` | Browser | `200` or `202` | Submit a text turn; return a completed result or a pollable operation. |
 | `POST /api/v1/sessions/{session_id}/end` | Browser | `200` or `202` | Idempotently request graceful session completion. |
 | `GET /api/v1/sessions/{session_id}/events` | Browser | `200` | Read an ordered, cursor-paginated event projection. |
+| `POST /api/v1/sessions/{session_id}/voice/events` | Browser | `200` | Durably acknowledge one ordered, non-sensitive voice control event. |
+| `GET /api/v1/sessions/{session_id}/voice/events` | Browser | `200` | Reconcile accepted voice control-event acknowledgements after a reconnect. |
 | `GET /api/v1/operations/{operation_id}` | Browser | `200` | Read an authorized asynchronous operation. |
 | `POST /internal/v1/voice/turns` | Voice worker | `200` or `202` | Submit a final semantic customer turn using session sequence ordering. |
 | `POST /internal/v1/voice/interruptions` | Voice worker | `202` | Record playback cancellation/truncation before the next turn is processed. |
@@ -88,6 +90,12 @@ The voice worker must submit exactly one final voice turn for each `sequence`. A
 ### Agora credentials
 
 The response contains only a short-lived RTC token, channel name, participant UID, role, and expiry. It never contains the Agora App Certificate. Credentials are bound to the authorized session and cannot select an arbitrary channel or UID. The client must refresh before expiry through the same endpoint.
+
+### Voice control-event synchronization
+
+Each browser tab owns an independent UUIDv7 `stream_id` and sends schema-version 1 control events with a UUIDv7 `event_id`, monotonically increasing `sequence`, UTC `occurred_at`, and one allowlisted `event_type`. Version 1 event types are `CLIENT_READY`, `RTC_CONNECTED`, `RTC_RECONNECTING`, `RTC_DISCONNECTED`, `MICROPHONE_MUTED`, `MICROPHONE_UNMUTED`, and `CALL_ENDED`. Payloads are bounded to 2 KiB and must not contain audio, transcripts, credentials, cookies, or authorization material.
+
+Flask persists an accepted event before returning its per-stream `acknowledged_sequence` and session-wide `server_sequence`. An exact retry returns the original acknowledgement with `duplicate: true`; a gap or reuse with different content returns `409 VOICE_EVENT_SEQUENCE_CONFLICT` and `details.expected_sequence`. On reconnect, the browser retries its unacknowledged per-tab outbox in order and reads acknowledgements after its last `server_sequence`. PostgreSQL is authoritative, so API or Redis restarts cannot reset ordering. These control events do not replace the private semantic-turn and interruption contracts.
 
 ### Operation
 
@@ -136,6 +144,7 @@ The baseline limits are contract defaults; production may lower limits only with
 | Text/voice semantic turns | 60/minute | tenant + session |
 | Agora credential minting | 10/minute | tenant + session |
 | Internal interruption events | 120/minute | workload + session |
+| Browser voice control events | 120/minute | tenant + actor |
 
 Every rate-limited response includes `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` (UTC epoch seconds). `429 RATE_LIMITED` also includes `Retry-After` in whole seconds. Dependency overload uses `503 DEPENDENCY_UNAVAILABLE`, not `429`, and may include `Retry-After`. Clients use bounded exponential backoff with jitter and must not retry non-retryable errors.
 

@@ -233,4 +233,4 @@ def test_renew_requires_a_prior_issuance_and_revoke_blocks_further_issuance(
 
     denied_after_revoke = client.post(f"/api/v1/sessions/{session_id}/voice/token", headers=_headers())
     assert denied_after_revoke.status_code == 409
-    assert denied_after_revoke.get_json()["error"]["code"] == "VOICE_SESSION_DENIED"
+    assert denied_after_revoke.get_json()["error"]["code"] == "VOICE_CONSENT_REQUIRED"

@@ -15,7 +15,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-
 # The closed set of logical MCP tools this workload may ever invoke, mirroring
 # docs/contracts/mcp-tools.v1.json. A tool name is never built from model or customer text, but
 # this allowlist is enforced here too as an independent, defense-in-depth boundary: even a

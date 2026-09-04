@@ -707,6 +707,14 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Added a versioned, UUIDv7 voice control-event envelope with a 2 KiB non-sensitive payload boundary; per-tab ordered browser outboxes; UUIDv7 idempotency keys; strict gap/conflict handling; exact duplicate acknowledgement replay; session-wide durable server ordering; reconnect replay; PostgreSQL row serialization, uniqueness constraints, forced RLS, and least-privilege grants. Agora connection, mute, and end transitions now enter the ordered outbox, and online recovery flushes pending events without storing audio, transcripts, cookies, or credentials.
 - Verification: `uv run pytest -m "not integration" -q` -> `300 passed, 27 deselected`; `uv run mypy` -> `Success: no issues found in 67 source files`; focused voice tests -> `16 passed`; `npm run lint --workspace frontend` -> passed with Node `24.19.0`/npm `11.17.0`; `npm run typecheck --workspace frontend` -> passed; `npm run build --workspace frontend` -> production build passed; `node scripts/validate-api-contract.mjs` -> `16 operations, 47 schemas, 10 event types, 13 examples`; `git diff --check` -> passed. Alembic offline generation reaches a pre-existing inspection-only migration that cannot run against Alembic's mock connection; the new migration is imported and will be executed by the PR's PostgreSQL integration job.
 
+### 2026-09-05 — Implemented bounded voice recovery and graceful termination
+
+- Phase: 4 (`P4-T007`, GitHub #71)
+- Files: `backend/src/knotic_api/voice/recovery.py`, `backend/migrations/versions/20260905_0010_voice_recovery.py`, `backend/tests/test_voice_recovery.py`, `backend/src/knotic_api/app.py`, `backend/tests/test_postgres_schema.py`, `frontend/src/features/voice/useAgoraCall.ts`, `docs/DATA_MODEL.md`, `docs/phases/PHASE_4_REALTIME_VOICE.md`, this file.
+- Status: Implemented and locally verified; PostgreSQL execution remains covered by the pull-request integration service.
+- Summary: Added a typed recovery policy for Agora token/connection, speech input/output, network, backend, Redis, and policy failures; bounded attempts and overall deadlines; approved speech-provider failover; terminal safe messaging; durable forced-RLS recovery checkpoints with optimistic concurrency; and backend-restart resume semantics. The browser now performs bounded token-renewal retries, enforces a 20-second reconnect deadline, disables the microphone before teardown, and bounds event flush and server-side token revocation so a failed dependency cannot trap the user in an ending state.
+- Verification: `uv run pytest backend/tests/test_voice_recovery.py -q` -> `11 passed`; focused mypy -> passed; frontend lint and typecheck -> passed. Full-suite and production-build evidence is recorded after the stacked change is finalized.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

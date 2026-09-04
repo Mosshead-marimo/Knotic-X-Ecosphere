@@ -92,6 +92,7 @@ def test_migration_constraints_rls_query_plan_and_populated_rollback() -> None:
         assert EXPECTED_ENTITIES <= set(inspector.get_table_names())
         assert "workflow_turn_checkpoints" in inspector.get_table_names()
         assert "voice_control_events" in inspector.get_table_names()
+        assert "voice_recovery_states" in inspector.get_table_names()
         with engine.connect() as connection:
             rls = connection.execute(
                 sa.text(

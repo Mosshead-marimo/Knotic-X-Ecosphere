@@ -47,16 +47,33 @@ async function requestVoiceToken(
   sessionId: string,
   csrfToken: string,
   path: "/voice/token" | "/voice/token/renew",
+  signal?: AbortSignal,
 ): Promise<VoiceTokenResponse> {
   const response = await fetch(`${apiBaseUrl}/api/v1/sessions/${sessionId}${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "X-CSRF-Token": csrfToken },
+    signal,
   });
   if (!response.ok) {
     throw new Error(`Voice token request failed (status ${response.status}).`);
   }
   return (await response.json()) as VoiceTokenResponse;
+}
+
+async function withBoundedRetries<T>(operation: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250 * 2 ** (attempt - 1)));
+      }
+    }
+  }
+  throw lastError;
 }
 
 function describeJoinFailure(error: unknown): string {
@@ -79,6 +96,8 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const trackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const eventSyncRef = useRef<VoiceEventSync | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const endingRef = useRef(false);
 
   const synchronize = useCallback(
     async (eventType: VoiceControlEventType) => {
@@ -101,9 +120,14 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
   );
 
   const teardown = useCallback(async () => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     const track = trackRef.current;
     trackRef.current = null;
     if (track) {
+      await track.setEnabled(false).catch(() => undefined);
       track.close();
     }
     const client = clientRef.current;
@@ -118,15 +142,29 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
   }, []);
 
   const leave = useCallback(async () => {
+    endingRef.current = true;
     setStatus("ending");
-    await synchronize("CALL_ENDED").catch(() => undefined);
-    await teardown();
-    setStatus("ended");
-  }, [synchronize, teardown]);
+    try {
+      await Promise.race([
+        synchronize("CALL_ENDED"),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 2_000)),
+      ]).catch(() => undefined);
+      await fetch(`${apiBaseUrl}/api/v1/sessions/${sessionId}/voice/token`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "X-CSRF-Token": csrfToken },
+        signal: AbortSignal.timeout(3_000),
+      }).catch(() => undefined);
+    } finally {
+      await teardown();
+      setStatus("ended");
+    }
+  }, [apiBaseUrl, csrfToken, sessionId, synchronize, teardown]);
 
   const join = useCallback(async () => {
     setErrorMessage(null);
     setStatus("connecting");
+    endingRef.current = false;
     try {
       const issued = await requestVoiceToken(apiBaseUrl, sessionId, csrfToken, "/voice/token");
       const { default: AgoraRTC } = await import("agora-rtc-sdk-ng");
@@ -138,20 +176,40 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
         if (nextState === "RECONNECTING") {
           setStatus("reconnecting");
           synchronizeConnectionState("RTC_RECONNECTING");
+          if (reconnectTimerRef.current === null) {
+            reconnectTimerRef.current = window.setTimeout(() => {
+              setErrorMessage("The call could not reconnect within the recovery window.");
+              setStatus("error");
+              void teardown();
+            }, 20_000);
+          }
         } else if (nextState === "CONNECTED") {
+          if (reconnectTimerRef.current !== null) {
+            window.clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+          }
           setStatus("connected");
           synchronizeConnectionState("RTC_CONNECTED");
         } else if (nextState === "DISCONNECTED") {
-          setStatus((previous) => (previous === "error" ? previous : "ended"));
+          setStatus((previous) => (previous === "error" || endingRef.current ? previous : "reconnecting"));
           synchronizeConnectionState("RTC_DISCONNECTED");
         }
       });
       client.on("token-privilege-will-expire", () => {
-        void requestVoiceToken(apiBaseUrl, sessionId, csrfToken, "/voice/token/renew")
+        void withBoundedRetries(() =>
+          requestVoiceToken(
+            apiBaseUrl,
+            sessionId,
+            csrfToken,
+            "/voice/token/renew",
+            AbortSignal.timeout(3_000),
+          ),
+        )
           .then((renewed) => client.renewToken(renewed.token))
           .catch(() => {
             setErrorMessage("The call's access token could not be renewed.");
             setStatus("error");
+            void teardown();
           });
       });
 

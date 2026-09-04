@@ -15,6 +15,7 @@ from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, 
 from .observability import StateDataObservability
 from .privacy_logging import install_sensitive_data_filter
 from .voice.event_sync import PostgresVoiceEventStore, VoiceEventSynchronizer
+from .voice.recovery import PostgresRecoveryStore, VoiceRecoveryCoordinator
 from .voice.session_service import AgoraSessionTokenService, LoggingAgoraAuditSink, RedisAgoraSessionStore
 from .voice_api import VoiceDependencies, register_voice_api
 
@@ -70,6 +71,7 @@ def create_app(
         event_synchronizer=VoiceEventSynchronizer(PostgresVoiceEventStore(dependencies.engine)),
     )
     register_voice_api(app, voice_dependencies)
+    app.extensions["knotic_voice_recovery"] = VoiceRecoveryCoordinator(PostgresRecoveryStore(dependencies.engine))
 
     @app.get("/api/v1/health/live")
     def live() -> ResponseReturnValue:

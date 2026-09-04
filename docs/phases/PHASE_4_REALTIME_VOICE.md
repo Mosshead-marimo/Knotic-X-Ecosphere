@@ -71,7 +71,7 @@ Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding 
 - Acceptance: Data processing matches approved policy and consent; muted audio is not transmitted.
 - Verify: Privacy review, mute traffic inspection, retention/deletion test.
 
-### [ ] P4-T009 — Add end-to-end voice observability
+### [x] P4-T009 — Add end-to-end voice observability
 
 - Dependencies: P4-T003–P4-T007.
 - Implement: Per-turn traces for capture, transcription, graph, tools, synthesis, first audio, interruption, failures, and quality signals without logging sensitive content by default.

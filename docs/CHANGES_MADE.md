@@ -723,6 +723,14 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Token issue/renew now fail closed without unexpired actor/session consent. Consent is versioned, UUIDv7-idempotent, limited to approved media regions, expires after eight hours, revokes on call end, cascades on erasure, and is protected by forced RLS. Raw recording is prohibited by request validation and a database check. The browser accurately states that audio is processed but not recorded by default, and unmute synchronizes policy state before enabling the track; any failure leaves the microphone disabled. Worker adapters receive an explicit `consent_active && !muted` transmission gate. Existing per-action rate limits provide abuse controls, with consent limited separately to 10 requests per window.
 - Verification: `uv run pytest backend/tests/test_voice_privacy.py backend/tests/test_config.py -q` -> `14 passed`; focused mypy -> passed; frontend lint/typecheck pending final stack verification. Added PostgreSQL service tests for consent-required token issuance and migration/table presence.
 
+### 2026-09-05 — Added content-free end-to-end voice observability
+
+- Phase: 4 (`P4-T009`, GitHub #73)
+- Files: `backend/src/knotic_api/voice/telemetry.py`, `backend/tests/test_voice_telemetry.py`, `backend/src/knotic_api/voice_api.py`, `backend/src/knotic_api/app.py`, `infra/observability/prometheus/voice-alerts.yaml`, `infra/observability/grafana/voice-dashboard.json`, `infra/observability/README.md`, `docs/VOICE_OBSERVABILITY.md`, `docs/phases/PHASE_4_REALTIME_VOICE.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added per-turn OpenTelemetry-compatible stage spans for capture, transcription, workflow, governed tools, synthesis, first audio, and interruption; correlated trace-only session/turn/response IDs; low-cardinality latency, failure, outcome, and quality metrics; private metrics export; executable content/redaction tests; a Grafana dashboard; Prometheus latency/failure alerts; and an operator isolation runbook. The instrumentation interface cannot accept transcript, audio, prompt, customer, token, cookie, or provider-payload content.
+- Verification: Focused telemetry tests validate every stage span, correlation, metric labels, content exclusion, dashboard panels, and alert coverage. Full stack verification follows in `P4-T010`.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

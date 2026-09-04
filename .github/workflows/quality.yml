@@ -81,6 +81,7 @@ jobs:
           backend/tests/test_privacy_lifecycle.py
           backend/tests/test_session_lifecycle_api.py
           backend/tests/test_state_performance.py
+          backend/tests/test_voice_api.py
 
   container-security:
     name: container-security

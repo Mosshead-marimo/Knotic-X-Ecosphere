@@ -334,14 +334,15 @@ class KnowledgeQueryService:
         unknowns: list[str] = []
         citations: dict[str, dict[str, str]] = {}
         for dimension in dimensions:
-            matches = self._retrieval.search(
-                tenant_id=tenant_id, query=f"{competitor} {dimension}", domains={"COMPETITOR"}, limit=1
-            )
-            if matches:
-                comparisons.append(
-                    {"dimension": dimension, "statement": matches[0].text, "citation": dict(matches[0].citation)}
-                )
-                citations[matches[0].chunk_id] = dict(matches[0].citation)
+            # Search on the dimension alone: prepending the competitor name to every query would
+            # let the name itself carry enough lexical/vector overlap to "match" any dimension,
+            # even one with no grounded evidence. Requiring the competitor's name to actually
+            # appear in the retrieved text keeps the match tied to that competitor.
+            matches = self._retrieval.search(tenant_id=tenant_id, query=dimension, domains={"COMPETITOR"}, limit=3)
+            match = next((item for item in matches if competitor.casefold() in item.text.casefold()), None)
+            if match is not None:
+                comparisons.append({"dimension": dimension, "statement": match.text, "citation": dict(match.citation)})
+                citations[match.chunk_id] = dict(match.citation)
             else:
                 unknowns.append(dimension)
         for match in baseline:

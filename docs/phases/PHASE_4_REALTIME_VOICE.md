@@ -84,6 +84,7 @@ Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding 
 - Implement: Browser/device/network test matrix, concurrent-call capacity tests, latency percentiles, soak tests, quota monitoring, and release thresholds.
 - Acceptance: Approved p50/p95/p99 latency, interruption, error-rate, and concurrency targets pass in production-like infrastructure.
 - Verify: Signed performance report and release-gate results.
+- Current certification status: `INCOMPLETE` until approved provider/account/region/quota evidence and a signed production-like run for the exact release commit are supplied. The evaluator, matrix, thresholds, and signing workflow are implemented; this checkbox and the Phase 4 gate must remain open until the external evidence passes.
 
 ## Phase gate
 

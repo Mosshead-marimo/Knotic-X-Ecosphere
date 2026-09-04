@@ -25,6 +25,7 @@ dependencies = [
 [project.scripts]
 knotic-api = "knotic_api.__main__:main"
 knotic-evaluate = "knotic_api.workflow.evaluation:main"
+knotic-certify-voice = "knotic_api.voice.certification:main"
 
 [build-system]
 requires = ["uv_build==0.12.5"]

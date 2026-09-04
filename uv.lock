@@ -707,6 +707,9 @@ source = { editable = "mcp" }
 dependencies = [
     { name = "knotic-config" },
     { name = "mcp" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
+    { name = "prometheus-client" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
     { name = "redis", extra = ["hiredis"] },
@@ -717,6 +720,9 @@ dependencies = [
 requires-dist = [
     { name = "knotic-config", editable = "packages/config" },
     { name = "mcp", specifier = "==2.0.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = "==1.44.0" },
+    { name = "opentelemetry-sdk", specifier = "==1.44.0" },
+    { name = "prometheus-client", specifier = "==0.26.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.4" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "redis", extras = ["hiredis"], specifier = "==8.1.0" },

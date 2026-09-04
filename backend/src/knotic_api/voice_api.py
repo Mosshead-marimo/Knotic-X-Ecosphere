@@ -68,9 +68,7 @@ class VoiceApi:
         self.dependencies = dependencies
 
     def register(self) -> None:
-        self.app.add_url_rule(
-            "/api/v1/sessions/<session_id>/voice/token", view_func=self.issue_token, methods=["POST"]
-        )
+        self.app.add_url_rule("/api/v1/sessions/<session_id>/voice/token", view_func=self.issue_token, methods=["POST"])
         self.app.add_url_rule(
             "/api/v1/sessions/<session_id>/voice/token/renew", view_func=self.renew_token, methods=["POST"]
         )
@@ -137,9 +135,7 @@ class VoiceApi:
             self.app.logger.exception("unhandled voice token revocation failure")
             return self._problem(self._internal_problem())
 
-    def _authorize(
-        self, session_id: str, *, action: str
-    ) -> tuple[AuthenticatedActor, Role, UUID, RateLimitDecision]:
+    def _authorize(self, session_id: str, *, action: str) -> tuple[AuthenticatedActor, Role, UUID, RateLimitDecision]:
         authenticated = self.dependencies.browser_sessions.authenticate(request.cookies.get("knotic_session"))
         if authenticated is None:
             raise VoiceApiProblem(status=401, code="AUTHENTICATION_REQUIRED", message="Authentication is required.")
@@ -182,9 +178,7 @@ class VoiceApi:
         try:
             payload = VoiceTokenRequest.model_validate_json(raw)
         except Exception as error:
-            raise VoiceApiProblem(
-                status=422, code="VALIDATION_FAILED", message="Request validation failed."
-            ) from error
+            raise VoiceApiProblem(status=422, code="VALIDATION_FAILED", message="Request validation failed.") from error
         return payload.role
 
     @staticmethod

@@ -137,7 +137,7 @@ class PricingCatalog:
                     currency=str(item["currency"]),
                     monthly_price_per_user=Decimal(str(item["monthly_price_per_user"])),
                     annual_price_per_user=Decimal(str(item["annual_price_per_user"])),
-                    minimum_users=int(item["minimum_users"]),
+                    minimum_users=int(str(item["minimum_users"])),
                     region=str(item["region"]),
                     effective_at=datetime.fromisoformat(str(item["effective_at"])),
                     expires_at=datetime.fromisoformat(str(item["expires_at"])) if item.get("expires_at") else None,

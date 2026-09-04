@@ -57,6 +57,7 @@ Cookies or tokens must not be stored in browser local storage or exposed to Java
 | `GET /api/v1/sessions/{session_id}/events` | Browser | `200` | Read an ordered, cursor-paginated event projection. |
 | `POST /api/v1/sessions/{session_id}/voice/events` | Browser | `200` | Durably acknowledge one ordered, non-sensitive voice control event. |
 | `GET /api/v1/sessions/{session_id}/voice/events` | Browser | `200` | Reconcile accepted voice control-event acknowledgements after a reconnect. |
+| `POST /api/v1/sessions/{session_id}/voice/consent` | Browser | `200` | Record explicit, versioned voice-processing consent before credential issuance. |
 | `GET /api/v1/operations/{operation_id}` | Browser | `200` | Read an authorized asynchronous operation. |
 | `POST /internal/v1/voice/turns` | Voice worker | `200` or `202` | Submit a final semantic customer turn using session sequence ordering. |
 | `POST /internal/v1/voice/interruptions` | Voice worker | `202` | Record playback cancellation/truncation before the next turn is processed. |
@@ -96,6 +97,12 @@ The response contains only a short-lived RTC token, channel name, participant UI
 Each browser tab owns an independent UUIDv7 `stream_id` and sends schema-version 1 control events with a UUIDv7 `event_id`, monotonically increasing `sequence`, UTC `occurred_at`, and one allowlisted `event_type`. Version 1 event types are `CLIENT_READY`, `RTC_CONNECTED`, `RTC_RECONNECTING`, `RTC_DISCONNECTED`, `MICROPHONE_MUTED`, `MICROPHONE_UNMUTED`, and `CALL_ENDED`. Payloads are bounded to 2 KiB and must not contain audio, transcripts, credentials, cookies, or authorization material.
 
 Flask persists an accepted event before returning its per-stream `acknowledged_sequence` and session-wide `server_sequence`. An exact retry returns the original acknowledgement with `duplicate: true`; a gap or reuse with different content returns `409 VOICE_EVENT_SEQUENCE_CONFLICT` and `details.expected_sequence`. On reconnect, the browser retries its unacknowledged per-tab outbox in order and reads acknowledgements after its last `server_sequence`. PostgreSQL is authoritative, so API or Redis restarts cannot reset ordering. These control events do not replace the private semantic-turn and interruption contracts.
+
+### Voice consent and media privacy
+
+Agora credentials are refused until the authenticated actor records explicit processing consent for the session and the deployment-approved policy version and media region. Consent records are UUIDv7-idempotent, expire after eight hours, are revoked when the call ends, and are deleted with the session. Raw recording is disabled in version 1; `recording_allowed: true` is rejected. Raw audio stays in the Agora/speech media plane and is not persisted. Final transcript content follows the encrypted message retention and erasure policy.
+
+The browser disables its microphone track before teardown. The voice worker must apply the same `consent_active && !muted` transmission gate before forwarding any audio frame, making mute fail closed even if a UI event is delayed. Consent mutation is limited to 10 requests per tenant/actor window; token/event limits remain independently enforced.
 
 ### Operation
 

@@ -26,7 +26,7 @@ interface SequenceConflict {
   error?: { details?: { expected_sequence?: number } };
 }
 
-function uuid7(): string {
+export function createUuid7(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   let timestamp = Date.now();
   for (let index = 5; index >= 0; index -= 1) {
@@ -59,7 +59,7 @@ export class VoiceEventSync {
   ) {
     this.storageKey = `knotic:voice-events:${sessionId}`;
     const saved = this.readState();
-    this.streamId = saved?.streamId ?? uuid7();
+    this.streamId = saved?.streamId ?? createUuid7();
     this.pending = saved?.pending ?? [];
     this.persist();
   }
@@ -67,7 +67,7 @@ export class VoiceEventSync {
   enqueue(eventType: VoiceControlEventType): Promise<void> {
     const sequence = (this.pending.at(-1)?.sequence ?? this.lastAcknowledged()) + 1;
     this.pending.push({
-      event_id: uuid7(),
+      event_id: createUuid7(),
       stream_id: this.streamId,
       sequence,
       event_type: eventType,

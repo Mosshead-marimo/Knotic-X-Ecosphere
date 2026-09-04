@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, UID } from "agora-rtc-sdk-ng";
-import { VoiceEventSync, type VoiceControlEventType } from "./voiceEventSync";
+import { createUuid7, VoiceEventSync, type VoiceControlEventType } from "./voiceEventSync";
 
 /**
  * Realtime voice call lifecycle (P4-T002).
@@ -61,6 +61,35 @@ async function requestVoiceToken(
   return (await response.json()) as VoiceTokenResponse;
 }
 
+async function grantVoiceConsent(
+  apiBaseUrl: string,
+  sessionId: string,
+  csrfToken: string,
+  mediaRegion: string,
+): Promise<void> {
+  const consentId = createUuid7();
+  const response = await fetch(`${apiBaseUrl}/api/v1/sessions/${sessionId}/voice/consent`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken,
+      "Idempotency-Key": consentId,
+    },
+    body: JSON.stringify({
+      consent_id: consentId,
+      processing_allowed: true,
+      recording_allowed: false,
+      policy_version: "voice-processing-v1",
+      media_region: mediaRegion,
+    }),
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Voice consent could not be recorded (status ${response.status}).`);
+  }
+}
+
 async function withBoundedRetries<T>(operation: () => Promise<T>, attempts = 3): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -89,7 +118,12 @@ function describeJoinFailure(error: unknown): string {
   return "The call could not be started.";
 }
 
-export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: string): UseAgoraCallResult {
+export function useAgoraCall(
+  sessionId: string,
+  apiBaseUrl: string,
+  csrfToken: string,
+  mediaRegion: string,
+): UseAgoraCallResult {
   const [status, setStatus] = useState<CallStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
@@ -166,6 +200,7 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
     setStatus("connecting");
     endingRef.current = false;
     try {
+      await grantVoiceConsent(apiBaseUrl, sessionId, csrfToken, mediaRegion);
       const issued = await requestVoiceToken(apiBaseUrl, sessionId, csrfToken, "/voice/token");
       const { default: AgoraRTC } = await import("agora-rtc-sdk-ng");
       const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
@@ -227,7 +262,7 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
       setStatus("error");
       await teardown();
     }
-  }, [apiBaseUrl, sessionId, csrfToken, synchronize, synchronizeConnectionState, teardown]);
+  }, [apiBaseUrl, sessionId, csrfToken, mediaRegion, synchronize, synchronizeConnectionState, teardown]);
 
   const toggleMute = useCallback(async () => {
     const track = trackRef.current;
@@ -235,9 +270,22 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
       return;
     }
     const nextMuted = !muted;
-    await track.setEnabled(!nextMuted);
-    setMuted(nextMuted);
-    await synchronize(nextMuted ? "MICROPHONE_MUTED" : "MICROPHONE_UNMUTED");
+    try {
+      if (nextMuted) {
+        await track.setEnabled(false);
+        setMuted(true);
+        await synchronize("MICROPHONE_MUTED");
+      } else {
+        await synchronize("MICROPHONE_UNMUTED");
+        await track.setEnabled(true);
+        setMuted(false);
+      }
+    } catch {
+      await track.setEnabled(false).catch(() => undefined);
+      setMuted(true);
+      setErrorMessage("The microphone remains muted because its privacy state could not be confirmed.");
+      setStatus("error");
+    }
   }, [muted, synchronize]);
 
   useEffect(

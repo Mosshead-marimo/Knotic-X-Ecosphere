@@ -47,6 +47,7 @@ from knotic_api.voice.session_service import (
     AgoraSessionTokenService,
     IssuedAgoraToken,
 )
+from knotic_api.voice.telemetry import VoiceObservability, VoiceStage, VoiceTraceContext
 
 
 class VoiceTokenRequest(BaseModel):
@@ -65,6 +66,7 @@ class VoiceDependencies:
     allowed_origins: frozenset[str]
     event_synchronizer: VoiceEventSynchronizer
     privacy: VoicePrivacyService
+    telemetry: VoiceObservability
 
 
 class VoiceApiProblem(Exception):
@@ -166,9 +168,14 @@ class VoiceApi:
                     code="IDEMPOTENCY_CONFLICT",
                     message="Idempotency-Key must identify the submitted voice event.",
                 )
-            acknowledged = self.dependencies.event_synchronizer.accept(
-                tenant_id=actor.tenant_id, session_id=parsed_session_id, event=event
-            )
+            with self.dependencies.telemetry.stage(
+                VoiceStage.CAPTURE,
+                VoiceTraceContext(correlation_id=event.event_id, session_id=parsed_session_id),
+            ) as trace_result:
+                acknowledged = self.dependencies.event_synchronizer.accept(
+                    tenant_id=actor.tenant_id, session_id=parsed_session_id, event=event
+                )
+                trace_result["outcome"] = "success"
             response = jsonify(
                 event_id=str(acknowledged.event_id),
                 stream_id=str(acknowledged.stream_id),

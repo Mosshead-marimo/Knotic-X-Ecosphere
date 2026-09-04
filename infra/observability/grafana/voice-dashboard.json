@@ -1,0 +1,32 @@
+{
+  "title": "Knotic Realtime Voice",
+  "schemaVersion": 39,
+  "tags": ["knotic", "voice"],
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "First audio p95",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(knotic_voice_stage_duration_seconds_bucket{stage=\"first_audio\",outcome=\"success\"}[5m])))"}]
+    },
+    {
+      "id": 2,
+      "title": "Pipeline stage p95",
+      "type": "timeseries",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le,stage) (rate(knotic_voice_stage_duration_seconds_bucket[5m])))"}]
+    },
+    {
+      "id": 3,
+      "title": "Voice failures",
+      "type": "timeseries",
+      "targets": [{"expr": "sum by (component,code) (rate(knotic_voice_failures_total[5m]))"}]
+    },
+    {
+      "id": 4,
+      "title": "Quality signals",
+      "type": "timeseries",
+      "targets": [{"expr": "sum by (signal) (rate(knotic_voice_quality_events_total[5m]))"}]
+    }
+  ]
+}

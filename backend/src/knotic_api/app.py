@@ -18,6 +18,7 @@ from .voice.event_sync import PostgresVoiceEventStore, VoiceEventSynchronizer
 from .voice.privacy import PostgresVoiceConsentStore, VoicePrivacyService
 from .voice.recovery import PostgresRecoveryStore, VoiceRecoveryCoordinator
 from .voice.session_service import AgoraSessionTokenService, LoggingAgoraAuditSink, RedisAgoraSessionStore
+from .voice.telemetry import VoiceObservability
 from .voice_api import VoiceDependencies, register_voice_api
 
 
@@ -45,6 +46,13 @@ def create_app(
         allowed_origins=resolved.allowed_origins,
     )
     register_lifecycle_api(app, dependencies)
+
+    voice_telemetry = VoiceObservability(
+        service_name=resolved.service_name,
+        environment=resolved.environment.value,
+        otlp_endpoint=resolved.otel_exporter_otlp_endpoint,
+    )
+    app.extensions["knotic_voice_observability"] = voice_telemetry
 
     voice_redis = redis.Redis.from_url(
         resolved.redis_url.get_secret_value(),
@@ -75,6 +83,7 @@ def create_app(
             policy_version=resolved.voice_policy_version,
             allowed_media_regions=frozenset(resolved.voice_media_regions),
         ),
+        telemetry=voice_telemetry,
     )
     register_voice_api(app, voice_dependencies)
     app.extensions["knotic_voice_recovery"] = VoiceRecoveryCoordinator(PostgresRecoveryStore(dependencies.engine))
@@ -110,6 +119,7 @@ def create_app(
             return jsonify(error="unauthorized"), 401
         telemetry.sample_pool(dependencies.engine)
         payload, content_type = telemetry.render()
-        return Response(payload, content_type=content_type)
+        voice_payload, _ = voice_telemetry.render()
+        return Response(payload + voice_payload, content_type=content_type)
 
     return app

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, UID } from "agora-rtc-sdk-ng";
+import { VoiceEventSync, type VoiceControlEventType } from "./voiceEventSync";
 
 /**
  * Realtime voice call lifecycle (P4-T002).
@@ -77,6 +78,27 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
   const [muted, setMuted] = useState(false);
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const trackRef = useRef<IMicrophoneAudioTrack | null>(null);
+  const eventSyncRef = useRef<VoiceEventSync | null>(null);
+
+  const synchronize = useCallback(
+    async (eventType: VoiceControlEventType) => {
+      if (!eventSyncRef.current) {
+        eventSyncRef.current = new VoiceEventSync(apiBaseUrl, sessionId, csrfToken);
+      }
+      await eventSyncRef.current.enqueue(eventType);
+    },
+    [apiBaseUrl, csrfToken, sessionId],
+  );
+
+  const synchronizeConnectionState = useCallback(
+    (eventType: VoiceControlEventType) => {
+      void synchronize(eventType).catch(() => {
+        setErrorMessage("Call state could not be synchronized. Reconnect to continue safely.");
+        setStatus("error");
+      });
+    },
+    [synchronize],
+  );
 
   const teardown = useCallback(async () => {
     const track = trackRef.current;
@@ -97,9 +119,10 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
 
   const leave = useCallback(async () => {
     setStatus("ending");
+    await synchronize("CALL_ENDED").catch(() => undefined);
     await teardown();
     setStatus("ended");
-  }, [teardown]);
+  }, [synchronize, teardown]);
 
   const join = useCallback(async () => {
     setErrorMessage(null);
@@ -109,14 +132,18 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
       const { default: AgoraRTC } = await import("agora-rtc-sdk-ng");
       const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
       clientRef.current = client;
+      await synchronize("CLIENT_READY");
 
       client.on("connection-state-change", (nextState) => {
         if (nextState === "RECONNECTING") {
           setStatus("reconnecting");
+          synchronizeConnectionState("RTC_RECONNECTING");
         } else if (nextState === "CONNECTED") {
           setStatus("connected");
+          synchronizeConnectionState("RTC_CONNECTED");
         } else if (nextState === "DISCONNECTED") {
           setStatus((previous) => (previous === "error" ? previous : "ended"));
+          synchronizeConnectionState("RTC_DISCONNECTED");
         }
       });
       client.on("token-privilege-will-expire", () => {
@@ -142,7 +169,7 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
       setStatus("error");
       await teardown();
     }
-  }, [apiBaseUrl, sessionId, csrfToken, teardown]);
+  }, [apiBaseUrl, sessionId, csrfToken, synchronize, synchronizeConnectionState, teardown]);
 
   const toggleMute = useCallback(async () => {
     const track = trackRef.current;
@@ -152,7 +179,8 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
     const nextMuted = !muted;
     await track.setEnabled(!nextMuted);
     setMuted(nextMuted);
-  }, [muted]);
+    await synchronize(nextMuted ? "MICROPHONE_MUTED" : "MICROPHONE_UNMUTED");
+  }, [muted, synchronize]);
 
   useEffect(
     () => () => {
@@ -160,6 +188,17 @@ export function useAgoraCall(sessionId: string, apiBaseUrl: string, csrfToken: s
     },
     [teardown],
   );
+
+  useEffect(() => {
+    const flush = () => {
+      void eventSyncRef.current?.flush().catch(() => {
+        setErrorMessage("Call state could not be synchronized. Reconnect to continue safely.");
+        setStatus("error");
+      });
+    };
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, []);
 
   return { status, errorMessage, muted, join, leave, toggleMute };
 }

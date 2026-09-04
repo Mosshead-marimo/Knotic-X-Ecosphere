@@ -50,7 +50,7 @@ Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding 
 - Acceptance: FR-02 behavior is deterministic; interrupted text is not treated as heard beyond the delivered boundary.
 - Verify: Repeated barge-in, false-positive, race, rapid-turn, and topic-change tests.
 
-### [ ] P4-T006 — Synchronize voice events with backend state
+### [x] P4-T006 — Synchronize voice events with backend state
 
 - Dependencies: P1-T008, P2-T009, P4-T003–P4-T005.
 - Implement: Ordered event protocol, sequence numbers, acknowledgements, idempotency, reconnect replay, and reconciliation between client, Agora, Flask, and LangGraph.

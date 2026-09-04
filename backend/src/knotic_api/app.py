@@ -14,6 +14,7 @@ from .config import BackendSettings, load_backend_settings
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 from .observability import StateDataObservability
 from .privacy_logging import install_sensitive_data_filter
+from .voice.event_sync import PostgresVoiceEventStore, VoiceEventSynchronizer
 from .voice.session_service import AgoraSessionTokenService, LoggingAgoraAuditSink, RedisAgoraSessionStore
 from .voice_api import VoiceDependencies, register_voice_api
 
@@ -66,6 +67,7 @@ def create_app(
         ),
         agora_app_id=resolved.agora_app_id,
         allowed_origins=dependencies.allowed_origins,
+        event_synchronizer=VoiceEventSynchronizer(PostgresVoiceEventStore(dependencies.engine)),
     )
     register_voice_api(app, voice_dependencies)
 

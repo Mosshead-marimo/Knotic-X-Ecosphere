@@ -366,6 +366,63 @@
         }
       }
     },
+    "/api/v1/sessions/{session_id}/voice/events": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "post": {
+        "operationId": "acceptVoiceControlEvent",
+        "tags": ["Sessions"],
+        "summary": "Durably acknowledge one ordered voice control event",
+        "parameters": [
+          {"$ref": "#/components/parameters/CsrfToken"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VoiceControlEvent"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Event accepted or exact duplicate replayed",
+            "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VoiceEventAcknowledgement"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      },
+      "get": {
+        "operationId": "reconcileVoiceControlEvents",
+        "tags": ["Sessions"],
+        "summary": "Reconcile ordered voice event acknowledgements after reconnect",
+        "parameters": [
+          {"name": "after", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "default": 0}},
+          {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered acknowledgement page",
+            "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VoiceEventReplay"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    },
     "/api/v1/operations/{operation_id}": {
       "parameters": [{"$ref": "#/components/parameters/OperationId"}],
       "get": {
@@ -728,6 +785,41 @@
           "uid": {"type": "string", "minLength": 1, "maxLength": 64},
           "role": {"type": "string", "const": "PUBLISHER"},
           "expires_at": {"$ref": "#/components/schemas/Timestamp"}
+        }
+      },
+      "VoiceControlEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event_id", "stream_id", "sequence", "event_type", "occurred_at", "payload", "schema_version"],
+        "properties": {
+          "event_id": {"$ref": "#/components/schemas/Uuid"},
+          "stream_id": {"$ref": "#/components/schemas/Uuid"},
+          "sequence": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+          "event_type": {"type": "string", "enum": ["CLIENT_READY", "RTC_CONNECTED", "RTC_RECONNECTING", "RTC_DISCONNECTED", "MICROPHONE_MUTED", "MICROPHONE_UNMUTED", "CALL_ENDED"]},
+          "occurred_at": {"$ref": "#/components/schemas/Timestamp"},
+          "payload": {"type": "object", "additionalProperties": {"type": ["string", "integer", "boolean", "null"]}, "maxProperties": 16},
+          "schema_version": {"type": "integer", "const": 1}
+        }
+      },
+      "VoiceEventAcknowledgement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event_id", "stream_id", "acknowledged_sequence", "server_sequence", "duplicate"],
+        "properties": {
+          "event_id": {"$ref": "#/components/schemas/Uuid"},
+          "stream_id": {"$ref": "#/components/schemas/Uuid"},
+          "acknowledged_sequence": {"type": "integer", "minimum": 1},
+          "server_sequence": {"type": "integer", "minimum": 1},
+          "duplicate": {"type": "boolean"}
+        }
+      },
+      "VoiceEventReplay": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["events", "next_after"],
+        "properties": {
+          "events": {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/VoiceEventAcknowledgement"}},
+          "next_after": {"type": "integer", "minimum": 0}
         }
       },
       "TextTurnRequest": {

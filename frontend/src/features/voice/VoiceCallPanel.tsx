@@ -34,6 +34,8 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken }: VoiceCallPa
 
   const isConnecting = status === "connecting" || status === "requesting-permission";
   const isActive = status === "connected" || status === "reconnecting";
+  const isEnding = status === "ending";
+  const showEndCallButton = isActive || isConnecting || isEnding;
   const canJoin = consentGiven && (status === "idle" || status === "ended" || status === "error");
 
   return (
@@ -45,7 +47,7 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken }: VoiceCallPa
             type="checkbox"
             checked={consentGiven}
             onChange={(event) => setConsentGiven(event.target.checked)}
-            disabled={isActive || isConnecting}
+            disabled={showEndCallButton}
           />{" "}
           I consent to this call being processed.
         </label>
@@ -60,8 +62,8 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken }: VoiceCallPa
       ) : null}
 
       <div>
-        {isActive || isConnecting ? (
-          <button type="button" onClick={() => void leave()} disabled={status === "ending"}>
+        {showEndCallButton ? (
+          <button type="button" onClick={() => void leave()} disabled={isEnding}>
             End call
           </button>
         ) : (

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "browsers": ["Chrome latest", "Chrome previous", "Edge latest", "Edge previous", "Firefox latest", "Firefox previous", "Safari latest", "Safari previous"],
+  "operating_systems": ["Windows 11", "macOS current", "iOS current", "Android current"],
+  "devices": ["built-in microphone/speaker", "wired headset", "Bluetooth headset"],
+  "networks": ["broadband", "4G", "2% packet loss / 50 ms jitter", "offline then restored"],
+  "required_scenarios": ["join/leave", "permission denied then granted", "mute/unmute", "multi-turn", "barge-in", "token renewal", "reconnect", "device switch", "clean termination"],
+  "evidence_required": ["browser/version", "OS", "device", "network profile", "commit SHA", "timestamp", "automated result URI"]
+}

@@ -1,0 +1,21 @@
+{
+  "policy_version": "voice-release-v1",
+  "minimum_turns": 1000,
+  "minimum_concurrent_calls": 100,
+  "minimum_soak_minutes": 120,
+  "maximum_error_rate": 0.01,
+  "maximum_quota_peak_percent": 80,
+  "first_audio_p50_ms": 800,
+  "first_audio_p95_ms": 1500,
+  "first_audio_p99_ms": 2500,
+  "interruption_p50_ms": 120,
+  "interruption_p95_ms": 300,
+  "interruption_p99_ms": 500,
+  "required_matrix_cases": 20,
+  "minimum_first_audio_samples": 500,
+  "minimum_interruption_samples": 100,
+  "required_browsers": ["Chrome", "Edge", "Firefox", "Safari"],
+  "required_operating_systems": ["Windows", "macOS", "iOS", "Android"],
+  "required_devices": ["built-in", "wired", "Bluetooth"],
+  "required_networks": ["broadband", "4G", "impaired", "offline-restored"]
+}

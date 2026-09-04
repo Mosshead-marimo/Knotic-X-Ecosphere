@@ -100,6 +100,7 @@ def _authorized_client(
         version=1,
         created_at=now,
         updated_at=now,
+        ended_at=now if ended else None,
     )
     dependencies.active_states.create(state, event_watermark=1, fencing_token=0)
     cookie = f"browser-cookie-{suffix}-00000000000000000000000000000001"

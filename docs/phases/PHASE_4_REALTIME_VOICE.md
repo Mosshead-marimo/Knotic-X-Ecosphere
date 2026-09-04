@@ -57,7 +57,7 @@ Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding 
 - Acceptance: Disconnects and duplicate/out-of-order events cannot corrupt the conversation timeline.
 - Verify: Network partition, reordering, reconnect, multi-tab, and backend-restart tests.
 
-### [ ] P4-T007 — Implement recovery and graceful termination
+### [x] P4-T007 — Implement recovery and graceful termination
 
 - Dependencies: P4-T006.
 - Implement: Token renewal, transient reconnect, provider failover where approved, timeout policy, customer messaging, state persistence, and clean end-call behavior.

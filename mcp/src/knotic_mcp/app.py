@@ -91,7 +91,11 @@ async def _json(
         {
             "type": "http.response.start",
             "status": status,
-            "headers": [(b"content-type", b"application/json"), (b"cache-control", b"no-store"), *(extra_headers or [])],
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"cache-control", b"no-store"),
+                *(extra_headers or []),
+            ],
         }
     )
     await send({"type": "http.response.body", "body": json.dumps(payload, default=str, separators=(",", ":")).encode()})
@@ -446,8 +450,7 @@ def create_app(
                                 envelope=envelope,
                                 cached_at=now,
                                 fresh_until=now + timedelta(seconds=policy.ttl_seconds),
-                                stale_until=now
-                                + timedelta(seconds=policy.ttl_seconds + policy.stale_grace_seconds),
+                                stale_until=now + timedelta(seconds=policy.ttl_seconds + policy.stale_grace_seconds),
                             ),
                         )
                 sink.append(

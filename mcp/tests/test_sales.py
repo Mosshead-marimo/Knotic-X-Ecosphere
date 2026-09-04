@@ -118,7 +118,17 @@ def test_qualify_lead_rejects_out_of_bounds_component() -> None:
 
 
 @pytest.mark.parametrize(
-    ("score", "expected"), [(0, "NURTURE"), (39, "NURTURE"), (40, "FOLLOWUP"), (59, "FOLLOWUP"), (60, "SALES_QUALIFIED"), (74, "SALES_QUALIFIED"), (75, "HIGH_INTENT"), (100, "HIGH_INTENT")],
+    ("score", "expected"),
+    [
+        (0, "NURTURE"),
+        (39, "NURTURE"),
+        (40, "FOLLOWUP"),
+        (59, "FOLLOWUP"),
+        (60, "SALES_QUALIFIED"),
+        (74, "SALES_QUALIFIED"),
+        (75, "HIGH_INTENT"),
+        (100, "HIGH_INTENT"),
+    ],
 )
 def test_stage_for_score_boundaries(score: int, expected: str) -> None:
     assert stage_for_score(score) == expected

@@ -44,7 +44,9 @@ def test_cache_key_differs_by_tenant_tool_version_or_arguments() -> None:
         arguments={"query": "sso", "limit": 5},
     )
     other_tool = cache_key(tenant_id=TENANT, tool="product.search", version=1, arguments={"query": "sso", "limit": 5})
-    other_args = cache_key(tenant_id=TENANT, tool="knowledge.search", version=1, arguments={"query": "scim", "limit": 5})
+    other_args = cache_key(
+        tenant_id=TENANT, tool="knowledge.search", version=1, arguments={"query": "scim", "limit": 5}
+    )
     assert len({base, other_tenant, other_tool, other_args}) == 4
 
 
@@ -85,7 +87,10 @@ def test_in_memory_cache_get_set_and_invalidate() -> None:
     key = cache_key(tenant_id=TENANT, tool="knowledge.search", version=1, arguments={"query": "sso", "limit": 5})
     assert cache.get(key) is None
     entry = CacheEntry(
-        envelope=_envelope(), cached_at=NOW, fresh_until=NOW + timedelta(seconds=60), stale_until=NOW + timedelta(seconds=360)
+        envelope=_envelope(),
+        cached_at=NOW,
+        fresh_until=NOW + timedelta(seconds=60),
+        stale_until=NOW + timedelta(seconds=360),
     )
     cache.set(key, entry)
     assert cache.get(key) == entry
@@ -96,7 +101,10 @@ def test_in_memory_cache_get_set_and_invalidate() -> None:
 def test_in_memory_cache_invalidate_prefix_clears_matching_entries_only() -> None:
     cache = InMemoryToolResultCache()
     entry = CacheEntry(
-        envelope=_envelope(), cached_at=NOW, fresh_until=NOW + timedelta(seconds=60), stale_until=NOW + timedelta(seconds=360)
+        envelope=_envelope(),
+        cached_at=NOW,
+        fresh_until=NOW + timedelta(seconds=60),
+        stale_until=NOW + timedelta(seconds=360),
     )
     matching_key = f"mcp:cache:{TENANT}:knowledge.search:1:aaa"
     other_key = f"mcp:cache:{TENANT}:pricing.get_quote:1:bbb"

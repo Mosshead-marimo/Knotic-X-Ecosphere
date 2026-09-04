@@ -94,9 +94,7 @@ def _seeded_query_service() -> KnowledgeQueryService:
     store = KnowledgeStore()
     ingest = KnowledgeIngestionService(store, chunk_size=900)
     ingest.register_source(ApprovedSource("https://docs.example/product", TENANT_A, frozenset({"PRODUCT"})))
-    ingest.register_source(
-        ApprovedSource("https://docs.example/integrations", TENANT_A, frozenset({"INTEGRATION"}))
-    )
+    ingest.register_source(ApprovedSource("https://docs.example/integrations", TENANT_A, frozenset({"INTEGRATION"})))
     ingest.register_source(ApprovedSource("https://docs.example/competitors", TENANT_A, frozenset({"COMPETITOR"})))
     ingest.register_source(
         ApprovedSource(
@@ -196,9 +194,7 @@ def test_compare_competitor_leaves_ungrounded_dimensions_unknown() -> None:
 
 def test_get_security_information_denies_confidential_without_clearance() -> None:
     service = _seeded_query_service()
-    public, denied = service.get_security_information(
-        tenant_id=TENANT_A, topic="SOC 2 report", customer_clearance=None
-    )
+    public, denied = service.get_security_information(tenant_id=TENANT_A, topic="SOC 2 report", customer_clearance=None)
     assert denied is False
     assert public is not None
     assert public["classification"] == "PUBLIC"

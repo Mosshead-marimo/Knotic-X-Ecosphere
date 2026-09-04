@@ -210,7 +210,10 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         ingest = KnowledgeIngestionService(store)
         ingest.register_source(
             ApprovedSource(
-                "https://docs.example/pentest", tenant_id, frozenset({"SECURITY"}), classification="CUSTOMER_CONFIDENTIAL"
+                "https://docs.example/pentest",
+                tenant_id,
+                frozenset({"SECURITY"}),
+                classification="CUSTOMER_CONFIDENTIAL",
             )
         )
         ingest.ingest(
@@ -410,14 +413,15 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
             tool="product.search",
             version=1,
             status=ToolStatus.SUCCEEDED,
-            data={"products": [{"name": "Knotic Workspace", "summary": "Supports SSO.", "score": 0.9}], "citations": []},
+            data={
+                "products": [{"name": "Knotic Workspace", "summary": "Supports SSO.", "score": 0.9}],
+                "citations": [],
+            },
             started_at=now,
             completed_at=now,
         )
         cache = InMemoryToolResultCache()
-        key = cache_key(
-            tenant_id=tenant_id, tool="product.search", version=1, arguments={"query": "sso", "limit": 5}
-        )
+        key = cache_key(tenant_id=tenant_id, tool="product.search", version=1, arguments={"query": "sso", "limit": 5})
         cache.set(
             key,
             CacheEntry(

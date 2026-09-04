@@ -98,10 +98,7 @@ def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]
             set(arguments) <= {"topic", "customer_clearance"}
             and "topic" in arguments
             and _is_nonempty_str(arguments["topic"])
-            and (
-                "customer_clearance" not in arguments
-                or isinstance(arguments["customer_clearance"], str)
-            )
+            and ("customer_clearance" not in arguments or isinstance(arguments["customer_clearance"], str))
         )
     if definition.name == "pricing.get_quote":
         return (
@@ -134,7 +131,9 @@ def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]
             "purchase_intent": 10,
         }
         return set(arguments) == set(bounds) and all(
-            isinstance(arguments[name], int) and not isinstance(arguments[name], bool) and 0 <= arguments[name] <= maximum
+            isinstance(arguments[name], int)
+            and not isinstance(arguments[name], bool)
+            and 0 <= arguments[name] <= maximum
             for name, maximum in bounds.items()
         )
     if definition.name == "lead.next_action":

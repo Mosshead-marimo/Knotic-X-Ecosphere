@@ -38,6 +38,7 @@ _KNOWLEDGE_TOOLS = frozenset(
     }
 )
 
+
 @dataclass(frozen=True, slots=True)
 class McpSloSnapshot:
     knowledge_tool_p95_latency_seconds: float
@@ -97,11 +98,15 @@ class McpObservability:
             registry=self.registry,
         )
         self.tool_errors = Counter(
-            "knotic_mcp_tool_errors_total", "MCP tool call failures by safe error code", ("tool", "code"),
+            "knotic_mcp_tool_errors_total",
+            "MCP tool call failures by safe error code",
+            ("tool", "code"),
             registry=self.registry,
         )
         self.policy_denials = Counter(
-            "knotic_mcp_policy_denials_total", "MCP calls denied by policy, scope, or approval", ("tool", "code"),
+            "knotic_mcp_policy_denials_total",
+            "MCP calls denied by policy, scope, or approval",
+            ("tool", "code"),
             registry=self.registry,
         )
         self.cache_results = Counter(

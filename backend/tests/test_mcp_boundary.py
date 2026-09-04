@@ -48,8 +48,14 @@ def test_valid_knowledge_search_result_becomes_a_grounded_fact() -> None:
 
 
 def test_failed_or_pending_results_never_produce_facts() -> None:
-    assert grounded_facts_from_result(_result("knowledge.search", None, status="FAILED"), domain=GroundingDomain.PRODUCT) == ()
-    assert grounded_facts_from_result(_result("knowledge.search", None, status="PENDING"), domain=GroundingDomain.PRODUCT) == ()
+    assert (
+        grounded_facts_from_result(_result("knowledge.search", None, status="FAILED"), domain=GroundingDomain.PRODUCT)
+        == ()
+    )
+    assert (
+        grounded_facts_from_result(_result("knowledge.search", None, status="PENDING"), domain=GroundingDomain.PRODUCT)
+        == ()
+    )
 
 
 def test_unknown_tool_shape_yields_no_facts() -> None:
@@ -59,25 +65,33 @@ def test_unknown_tool_shape_yields_no_facts() -> None:
 
 def test_malformed_result_shapes_are_rejected_rather_than_partially_parsed() -> None:
     # Missing citation entirely.
-    assert grounded_facts_from_result(
-        _result("knowledge.search", {"matches": [{"text": "hi"}], "index_version": "v1"}),
-        domain=GroundingDomain.PRODUCT,
-    ) == ()
+    assert (
+        grounded_facts_from_result(
+            _result("knowledge.search", {"matches": [{"text": "hi"}], "index_version": "v1"}),
+            domain=GroundingDomain.PRODUCT,
+        )
+        == ()
+    )
     # Citation missing a required field.
-    assert grounded_facts_from_result(
-        _result(
-            "knowledge.search",
-            {
-                "matches": [{"text": "hi", "citation": {"source_uri": "https://x", "title": "x"}}],
-                "index_version": "v1",
-            },
-        ),
-        domain=GroundingDomain.PRODUCT,
-    ) == ()
+    assert (
+        grounded_facts_from_result(
+            _result(
+                "knowledge.search",
+                {
+                    "matches": [{"text": "hi", "citation": {"source_uri": "https://x", "title": "x"}}],
+                    "index_version": "v1",
+                },
+            ),
+            domain=GroundingDomain.PRODUCT,
+        )
+        == ()
+    )
     # Wrong type entirely: the result envelope itself rejects a non-object ``data`` payload
     # before it could ever reach the boundary, one layer of defense earlier than this module.
     with pytest.raises(ValidationError):
-        McpToolResult(tool_call_id=new_uuid7(), tool="knowledge.search", version=1, status="SUCCEEDED", data="not-a-dict")  # type: ignore[arg-type]
+        McpToolResult(
+            tool_call_id=new_uuid7(), tool="knowledge.search", version=1, status="SUCCEEDED", data="not-a-dict"
+        )  # type: ignore[arg-type]
 
 
 def test_injection_payload_in_retrieved_text_is_dropped_not_sanitized_and_forwarded() -> None:
@@ -176,7 +190,10 @@ def test_product_search_result_maps_products_to_citations_positionally() -> None
 def test_product_search_result_with_mismatched_array_lengths_is_rejected() -> None:
     result = _result(
         "product.search",
-        {"products": [{"name": "A", "summary": "text"}, {"name": "B", "summary": "text2"}], "citations": [_GOOD_CITATION]},
+        {
+            "products": [{"name": "A", "summary": "text"}, {"name": "B", "summary": "text2"}],
+            "citations": [_GOOD_CITATION],
+        },
     )
     assert grounded_facts_from_result(result, domain=GroundingDomain.PRODUCT) == ()
 

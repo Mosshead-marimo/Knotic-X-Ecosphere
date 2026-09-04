@@ -142,20 +142,32 @@ class ObservabilityTests(unittest.IsolatedAsyncioTestCase):
     def test_knowledge_miss_and_policy_denial_labels_are_tracked_separately_from_ordinary_errors(self) -> None:
         telemetry = McpObservability(service_name="test", environment="test")
         telemetry.record_call(
-            tool="knowledge.search", status="FAILED", code="NO_GROUNDED_RESULT", latency_seconds=0.1, cache_status="MISS"
+            tool="knowledge.search",
+            status="FAILED",
+            code="NO_GROUNDED_RESULT",
+            latency_seconds=0.1,
+            cache_status="MISS",
         )
         telemetry.record_call(
-            tool="pricing.get_quote", status="FAILED", code="PRICE_UNAVAILABLE", latency_seconds=0.1, cache_status="MISS"
+            tool="pricing.get_quote",
+            status="FAILED",
+            code="PRICE_UNAVAILABLE",
+            latency_seconds=0.1,
+            cache_status="MISS",
         )
         telemetry.record_call(
-            tool="knowledge.search", status="FAILED", code="PERMISSION_DENIED", latency_seconds=0.0, cache_status="NOT_ATTEMPTED"
+            tool="knowledge.search",
+            status="FAILED",
+            code="PERMISSION_DENIED",
+            latency_seconds=0.0,
+            cache_status="NOT_ATTEMPTED",
         )
         rendered = telemetry.render()[0].decode()
         self.assertIn('knotic_mcp_knowledge_misses_total{tool="knowledge.search"} 1.0', rendered)
         self.assertIn('knotic_mcp_policy_denials_total{code="PERMISSION_DENIED",tool="knowledge.search"} 1.0', rendered)
         # A pricing failure is an ordinary tool error, never a "knowledge miss" or policy denial.
-        self.assertNotIn("knotic_mcp_knowledge_misses_total{tool=\"pricing.get_quote\"}", rendered)
-        self.assertNotIn("knotic_mcp_policy_denials_total{code=\"PRICE_UNAVAILABLE\"", rendered)
+        self.assertNotIn('knotic_mcp_knowledge_misses_total{tool="pricing.get_quote"}', rendered)
+        self.assertNotIn('knotic_mcp_policy_denials_total{code="PRICE_UNAVAILABLE"', rendered)
 
     def test_provider_health_gauge_reflects_the_tracker(self) -> None:
         telemetry = McpObservability(service_name="test", environment="test")

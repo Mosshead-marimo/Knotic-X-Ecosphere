@@ -23,7 +23,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal
 
-_TOKEN_VERSION = "007"
+_TOKEN_VERSION = "007"  # noqa: S105 - the AccessToken2 wire-format version prefix, not a secret
 _VERSION_LENGTH = len(_TOKEN_VERSION)
 _RTC_SERVICE_TYPE = 1
 _PRIVILEGE_JOIN_CHANNEL = 1

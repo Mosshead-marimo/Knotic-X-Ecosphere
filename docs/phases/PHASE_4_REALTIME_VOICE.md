@@ -64,7 +64,7 @@ Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding 
 - Acceptance: Recoverable faults resume within limits; unrecoverable faults preserve state and terminate without false claims.
 - Verify: Agora, speech, network, backend, and Redis failure drills.
 
-### [ ] P4-T008 — Enforce voice privacy, consent, and abuse controls
+### [x] P4-T008 — Enforce voice privacy, consent, and abuse controls
 
 - Dependencies: P4-T002, P4-T003.
 - Implement: Consent capture, recording/transcript policy, retention, sensitive-data handling, mute guarantees, abuse/rate controls, regional routing, and deletion workflow.

@@ -15,6 +15,7 @@ from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, 
 from .observability import StateDataObservability
 from .privacy_logging import install_sensitive_data_filter
 from .voice.event_sync import PostgresVoiceEventStore, VoiceEventSynchronizer
+from .voice.privacy import PostgresVoiceConsentStore, VoicePrivacyService
 from .voice.recovery import PostgresRecoveryStore, VoiceRecoveryCoordinator
 from .voice.session_service import AgoraSessionTokenService, LoggingAgoraAuditSink, RedisAgoraSessionStore
 from .voice_api import VoiceDependencies, register_voice_api
@@ -69,6 +70,11 @@ def create_app(
         agora_app_id=resolved.agora_app_id,
         allowed_origins=dependencies.allowed_origins,
         event_synchronizer=VoiceEventSynchronizer(PostgresVoiceEventStore(dependencies.engine)),
+        privacy=VoicePrivacyService(
+            PostgresVoiceConsentStore(dependencies.engine),
+            policy_version=resolved.voice_policy_version,
+            allowed_media_regions=frozenset(resolved.voice_media_regions),
+        ),
     )
     register_voice_api(app, voice_dependencies)
     app.extensions["knotic_voice_recovery"] = VoiceRecoveryCoordinator(PostgresRecoveryStore(dependencies.engine))

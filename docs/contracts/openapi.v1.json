@@ -423,6 +423,39 @@
         }
       }
     },
+    "/api/v1/sessions/{session_id}/voice/consent": {
+      "parameters": [{"$ref": "#/components/parameters/SessionId"}],
+      "post": {
+        "operationId": "grantVoiceConsent",
+        "tags": ["Sessions"],
+        "summary": "Record explicit voice-processing consent",
+        "parameters": [
+          {"$ref": "#/components/parameters/CsrfToken"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VoiceConsentRequest"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Consent durably recorded",
+            "headers": {"X-Request-ID": {"$ref": "#/components/headers/RequestId"}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VoiceConsent"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"},
+          "415": {"$ref": "#/components/responses/UnsupportedMediaType"},
+          "422": {"$ref": "#/components/responses/UnprocessableEntity"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/DependencyUnavailable"}
+        }
+      }
+    },
     "/api/v1/operations/{operation_id}": {
       "parameters": [{"$ref": "#/components/parameters/OperationId"}],
       "get": {
@@ -799,6 +832,30 @@
           "occurred_at": {"$ref": "#/components/schemas/Timestamp"},
           "payload": {"type": "object", "additionalProperties": {"type": ["string", "integer", "boolean", "null"]}, "maxProperties": 16},
           "schema_version": {"type": "integer", "const": 1}
+        }
+      },
+      "VoiceConsentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["consent_id", "processing_allowed", "recording_allowed", "policy_version", "media_region"],
+        "properties": {
+          "consent_id": {"$ref": "#/components/schemas/Uuid"},
+          "processing_allowed": {"type": "boolean", "const": true},
+          "recording_allowed": {"type": "boolean", "const": false},
+          "policy_version": {"type": "string", "minLength": 1, "maxLength": 64},
+          "media_region": {"type": "string", "minLength": 2, "maxLength": 32}
+        }
+      },
+      "VoiceConsent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["consent_id", "policy_version", "media_region", "recording_allowed", "expires_at"],
+        "properties": {
+          "consent_id": {"$ref": "#/components/schemas/Uuid"},
+          "policy_version": {"type": "string", "minLength": 1, "maxLength": 64},
+          "media_region": {"type": "string", "minLength": 2, "maxLength": 32},
+          "recording_allowed": {"type": "boolean", "const": false},
+          "expires_at": {"$ref": "#/components/schemas/Timestamp"}
         }
       },
       "VoiceEventAcknowledgement": {

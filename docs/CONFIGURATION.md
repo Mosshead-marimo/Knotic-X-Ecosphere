@@ -65,6 +65,12 @@ Tests use `MappingSecretProvider`; application code must not read secrets direct
 
 Emergency rotation skips the overlap only when compromise risk exceeds availability risk. The incident owner must document the resulting interruption.
 
+## Voice privacy and regional processing
+
+- `KNOTIC_VOICE_POLICY_VERSION` identifies the approved consent text/policy (default `voice-processing-v1`). Changing it invalidates grants under earlier policy versions.
+- `KNOTIC_VOICE_MEDIA_REGIONS` is a JSON array of deployment-approved provider regions. The frontend's `NEXT_PUBLIC_KNOTIC_VOICE_MEDIA_REGION` must be exactly one member. Production approval must verify Agora and speech-provider routing/data terms for every configured value; `GLOBAL` is only appropriate when global processing is explicitly approved.
+- Raw recording is disabled by the version 1 application and database contract. Enabling it requires a new policy/contract/migration, encrypted object storage, retention and erasure jobs, and separate explicit consent.
+
 ## Logging and errors
 
 - Store credential fields as `SecretStr`; representations remain masked.

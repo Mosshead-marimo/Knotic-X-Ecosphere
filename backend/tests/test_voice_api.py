@@ -77,7 +77,13 @@ def voice_services() -> tuple[Engine, LifecycleDependencies, BackendSettings]:
 
 
 def _authorized_client(
-    engine: Engine, dependencies: LifecycleDependencies, settings: BackendSettings, *, suffix: str, ended: bool = False
+    engine: Engine,
+    dependencies: LifecycleDependencies,
+    settings: BackendSettings,
+    *,
+    suffix: str,
+    ended: bool = False,
+    consent: bool = True,
 ) -> tuple[FlaskClient, AuthenticatedActor, str]:
     tenant_id = new_uuid7()
     actor_id = new_uuid7()
@@ -90,6 +96,18 @@ def _authorized_client(
         connection.execute(
             sa.text("insert into actors(id,tenant_id,actor_type,status) values (:id,:tenant_id,'USER','ACTIVE')"),
             {"id": actor_id, "tenant_id": tenant_id},
+        )
+        connection.execute(
+            sa.text(
+                "insert into sales_sessions(id,tenant_id,status,locale,timezone,ended_at) "
+                "values (:id,:tenant_id,:status,'en-US','UTC',:ended_at)"
+            ),
+            {
+                "id": session_id,
+                "tenant_id": tenant_id,
+                "status": "ENDED" if ended else "ACTIVE",
+                "ended_at": datetime.now(UTC) if ended else None,
+            },
         )
     actor = AuthenticatedActor(tenant_id=tenant_id, actor_id=actor_id)
     now = datetime.now(UTC)
@@ -109,6 +127,20 @@ def _authorized_client(
     )
     client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
     client.set_cookie("knotic_session", cookie, domain="localhost")
+    if consent and not ended:
+        consent_id = str(new_uuid7())
+        response = client.post(
+            f"/api/v1/sessions/{session_id}/voice/consent",
+            headers={**_headers(), "Idempotency-Key": consent_id},
+            json={
+                "consent_id": consent_id,
+                "processing_allowed": True,
+                "recording_allowed": False,
+                "policy_version": "voice-processing-v1",
+                "media_region": "GLOBAL",
+            },
+        )
+        assert response.status_code == 200
     return client, actor, str(session_id)
 
 
@@ -165,6 +197,17 @@ def test_issue_token_rejects_ended_session_for_its_own_tenant(
 
     assert response.status_code == 409
     assert response.get_json()["error"]["code"] == "SESSION_NOT_ACCEPTING_VOICE"
+
+
+@pytest.mark.integration
+def test_issue_token_requires_durable_explicit_consent(
+    voice_services: tuple[Engine, LifecycleDependencies, BackendSettings],
+) -> None:
+    engine, dependencies, settings = voice_services
+    client, _actor, session_id = _authorized_client(engine, dependencies, settings, suffix="no-consent", consent=False)
+    response = client.post(f"/api/v1/sessions/{session_id}/voice/token", headers=_headers())
+    assert response.status_code == 409
+    assert response.get_json()["error"]["code"] == "VOICE_CONSENT_REQUIRED"
 
 
 @pytest.mark.integration

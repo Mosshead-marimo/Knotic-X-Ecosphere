@@ -31,6 +31,7 @@ from .config import McpSettings, load_mcp_settings
 from .contracts import ToolEnvelope, ToolError, ToolInvocation, ToolStatus, TrustedContext
 from .crm import CrmLead, CrmProviderPort, InMemoryCrmProvider, find_lead
 from .followup import FollowupChannel, FollowupService, sandbox_followup_service
+from .handoff import HandoffContext, HandoffPriority, HandoffService, HandoffStatus, sandbox_handoff_service
 from .integrations import (
     CircuitBreaker,
     CredentialStore,
@@ -71,6 +72,8 @@ _PROVIDER_FOR_TOOL: dict[str, str] = {
     "calendar.get_slots": "calendar_provider",
     "calendar.book_meeting": "calendar_provider",
     "followup.create": "messaging_provider",
+    "handoff.request_agent": "handoff_provider",
+    "handoff.transfer_context": "handoff_provider",
 }
 
 
@@ -208,6 +211,7 @@ def create_app(
     crm_provider: CrmProviderPort | None = None,
     calendar_provider: CalendarProviderPort | None = None,
     followup_service: FollowupService | None = None,
+    handoff_service: HandoffService | None = None,
     credential_store: CredentialStore | None = None,
     idempotency_store: IdempotencyStore | None = None,
 ) -> AsgiApp:
@@ -226,9 +230,15 @@ def create_app(
     crm = crm_provider or InMemoryCrmProvider()
     calendar_service = calendar_provider or InMemoryCalendarProvider()
     followups = followup_service or sandbox_followup_service()
+    handoffs = handoff_service or sandbox_handoff_service()
     credentials = credential_store or _SandboxCredentialStore()
     idempotency = idempotency_store or InMemoryIdempotencyStore()
-    crm_breaker, calendar_breaker, messaging_breaker = CircuitBreaker(), CircuitBreaker(), CircuitBreaker()
+    crm_breaker, calendar_breaker, messaging_breaker, handoff_breaker = (
+        CircuitBreaker(),
+        CircuitBreaker(),
+        CircuitBreaker(),
+        CircuitBreaker(),
+    )
     integration_retry = RetryPolicy()
 
     def _credential_or_failure(
@@ -587,6 +597,93 @@ def create_app(
                 invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
             )
 
+    def handoff_request_agent(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("handoff", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        key = invocation.idempotency_key
+
+        def perform() -> ToolEnvelope:
+            try:
+                record = call_with_resilience(
+                    provider="handoff_provider",
+                    breaker=handoff_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: handoffs.request(
+                        tenant_id=context.tenant_id,
+                        reason=str(invocation.arguments["reason"]),
+                        priority=HandoffPriority(str(invocation.arguments["priority"])),
+                        idempotency_key=key,
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _succeeded(
+                invocation,
+                {"handoff_id": str(record.handoff_id), "status": record.status.value},
+            )
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key has different arguments.")
+
+    def handoff_transfer_context(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("handoff", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        key = invocation.idempotency_key
+        arguments = dict(invocation.arguments)
+        handoff_id = UUID(str(arguments.pop("handoff_id")))
+        try:
+            packet = HandoffContext.model_validate(arguments)
+        except ValidationError:
+            return _failed(invocation, "INVALID_ARGUMENT", "The FR-13 handoff context is incomplete or invalid.")
+
+        def perform() -> ToolEnvelope:
+            try:
+                record = call_with_resilience(
+                    provider="handoff_provider",
+                    breaker=handoff_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: handoffs.transfer_context(
+                        tenant_id=context.tenant_id,
+                        handoff_id=handoff_id,
+                        context=packet,
+                        idempotency_key=key,
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            status = "TRANSFERRED" if record.status == HandoffStatus.TRANSFERRED else "PENDING_CONFIRMATION"
+            data = {"handoff_id": str(record.handoff_id), "status": status}
+            return _succeeded(invocation, data) if status == "TRANSFERRED" else _pending(invocation, data)
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key has different arguments.")
+
     def knowledge_search(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
         matches = retrieval.search(
             tenant_id=context.tenant_id,
@@ -723,6 +820,8 @@ def create_app(
     _register_default("calendar.get_slots", calendar_get_slots)
     _register_default("calendar.book_meeting", calendar_book_meeting)
     _register_default("followup.create", followup_create)
+    _register_default("handoff.request_agent", handoff_request_agent)
+    _register_default("handoff.transfer_context", handoff_transfer_context)
     approval = ApprovalPolicy(hmac_key=resolved.auth_token.get_secret_value().encode())
 
     async def app(scope: dict[str, Any], receive: Any, send: AsgiSend) -> None:

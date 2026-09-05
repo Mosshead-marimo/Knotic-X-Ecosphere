@@ -757,6 +757,14 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Added a strict policy input/decision model for all eight FR-13 triggers, fixed precedence, priority assignment, unauthorized-discount blocking, a versioned persistence payload containing every trigger reason, and an enforced next-action override that routes to governed handoff regardless of conflicting free-form model intent.
 - Verification: Focused escalation and next-action suite -> `27 passed`; `uv run mypy backend/src` -> passed; Ruff and repository-wide verification follow at the top of the stack.
 
+### 2026-09-05 — Implemented structured human handoff
+
+- Phase: 5 (`P5-T008`, GitHub #84)
+- Files: `mcp/src/knotic_mcp/handoff.py`, `mcp/src/knotic_mcp/app.py`, `mcp/src/knotic_mcp/registry.py`, `mcp/tests/test_handoff.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added a strict complete FR-13 context model, deterministic skills routing, unavailable-agent fallback queue, provider-confirmed request records, agent-bound acknowledgement, truthful customer status messages, idempotent context transfer, and pending-versus-transferred semantics. The gateway now exposes both handoff tools through the closed authenticated registry.
+- Verification: Focused handoff/gateway suite -> `19 passed`; `uv run mypy mcp/src` and Ruff MCP checks -> passed. The added confirmed-transfer path is included in the final top-of-stack suite.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

@@ -43,6 +43,8 @@ TOOL_DEFINITIONS = {
     "calendar.book_meeting": ToolDefinition(
         "calendar.book_meeting", 1, "calendar:write", "CUSTOMER_CONFIRMATION", True, 6000
     ),
+    "handoff.request_agent": ToolDefinition("handoff.request_agent", 1, "handoff:write", "POLICY", True, 5000),
+    "handoff.transfer_context": ToolDefinition("handoff.transfer_context", 1, "handoff:write", "POLICY", True, 5000),
 }
 
 
@@ -239,5 +241,37 @@ def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]
             and all(isinstance(item, str) and item for item in attendees)
             and isinstance(arguments["title"], str)
             and arguments["title"] != ""
+        )
+    if definition.name == "handoff.request_agent":
+        return (
+            set(arguments) == {"reason", "priority"}
+            and _is_nonempty_str_bounded(arguments["reason"], max_length=1000)
+            and arguments["priority"] in {"NORMAL", "HIGH", "URGENT"}
+        )
+    if definition.name == "handoff.transfer_context":
+        required = {
+            "handoff_id",
+            "company",
+            "users",
+            "use_cases",
+            "integrations",
+            "competitors",
+            "objections",
+            "qualification_score",
+            "latest_request",
+            "summary",
+        }
+        return (
+            set(arguments) == required
+            and _is_uuid_str(arguments["handoff_id"])
+            and (arguments["company"] is None or isinstance(arguments["company"], str))
+            and (arguments["users"] is None or _in_bounds(arguments["users"], 10_000_000))
+            and all(
+                isinstance(arguments[field], list)
+                for field in ("use_cases", "integrations", "competitors", "objections")
+            )
+            and _in_bounds(arguments["qualification_score"], 100)
+            and (arguments["latest_request"] is None or isinstance(arguments["latest_request"], str))
+            and _is_nonempty_str_bounded(arguments["summary"], max_length=4000)
         )
     return bool(arguments) or not definition.side_effect

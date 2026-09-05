@@ -17,6 +17,7 @@ from .contracts import (
     validate_graph_state,
     validate_node_update,
 )
+from .escalation import EscalationDecision
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,11 +76,19 @@ _POLICIES = {
 }
 
 
-def decide_next_action(state: SalesGraphState) -> NextActionDecision:
+def decide_next_action(state: SalesGraphState, *, escalation: EscalationDecision | None = None) -> NextActionDecision:
     validated = validate_graph_state(state)
     turn = validated["turn"]
     objection = validated.get("objection_decision")
-    if objection is not None and objection.escalation_required:
+    if escalation is not None and escalation.should_escalate:
+        policy = _Policy(
+            NextBestAction.ESCALATE_HUMAN,
+            escalation.primary_trigger.value if escalation.primary_trigger is not None else "FR13_POLICY",
+            "handoff.request_agent",
+            ApprovalRequirement.POLICY,
+            provider_confirmation=True,
+        )
+    elif objection is not None and objection.escalation_required:
         policy = _Policy(
             NextBestAction.ESCALATE_HUMAN,
             "HIGH_RISK_OBJECTION",

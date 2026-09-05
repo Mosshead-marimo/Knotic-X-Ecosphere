@@ -81,7 +81,9 @@ def _working_hours_slots(
             day_start = day_cursor.replace(hour=_WORKING_HOUR_START)
             day_end = day_cursor.replace(hour=_WORKING_HOUR_END)
             slot_start = max(day_start, window_start)
-            while slot_start + slot_span <= day_end and slot_start < window_end and len(slots) < _MAX_SLOTS_PER_SNAPSHOT:
+            while (
+                slot_start + slot_span <= day_end and slot_start < window_end and len(slots) < _MAX_SLOTS_PER_SNAPSHOT
+            ):
                 starts_at = slot_start.astimezone(UTC)
                 ends_at = (slot_start + slot_span).astimezone(UTC)
                 slot_id = str(

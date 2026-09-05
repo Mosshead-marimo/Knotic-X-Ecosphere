@@ -765,6 +765,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Added a strict complete FR-13 context model, deterministic skills routing, unavailable-agent fallback queue, provider-confirmed request records, agent-bound acknowledgement, truthful customer status messages, idempotent context transfer, and pending-versus-transferred semantics. The gateway now exposes both handoff tools through the closed authenticated registry.
 - Verification: Focused handoff/gateway suite -> `19 passed`; `uv run mypy mcp/src` and Ruff MCP checks -> passed. The added confirmed-transfer path is included in the final top-of-stack suite.
 
+### 2026-09-05 — Implemented outcomes and provider reconciliation
+
+- Phase: 5 (`P5-T009`, GitHub #85)
+- Files: `backend/src/knotic_api/integrations/__init__.py`, `backend/src/knotic_api/integrations/reconciliation.py`, `backend/tests/test_integration_reconciliation.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added all six constrained FR-14 outcomes with append-only replacement history, provider-confirmation enforcement for booked demos, pending-work scheduling, bounded exponential retries, dead-letter visibility, operator-only replay, callback deduplication/conflict rejection, provider-truth convergence, and discrepancy alerts when an internally confirmed transaction is missing or failed at its authority.
+- Verification: Focused outcome/reconciliation suite -> `5 passed`; `uv run mypy backend/src` -> passed; Ruff passed after a single unused-import cleanup. Full repository verification follows at the top of the stack.
+- Follow-up: Production composition must back the defined work/ledger ports with PostgreSQL outbox/inbox tables and schedule `run_due` through the selected worker platform.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

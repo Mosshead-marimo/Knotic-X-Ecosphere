@@ -67,7 +67,7 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 - Acceptance: Every handoff contains complete current structured context and never claims acceptance without acknowledgement.
 - Verify: Completeness, unavailable-agent, timeout, duplicate, and transfer tests.
 
-### [ ] P5-T009 — Implement outcomes and reconciliation
+### [x] P5-T009 — Implement outcomes and reconciliation
 
 - Dependencies: P5-T003, P5-T005, P5-T006, P5-T008.
 - Implement: All FR-14 outcomes, allowed transitions, provider reconciliation jobs, pending work, dead-letter handling, operator replay, and discrepancy alerts.

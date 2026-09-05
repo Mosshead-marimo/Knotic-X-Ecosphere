@@ -154,12 +154,14 @@ class InMemoryCrmProvider:
             raise IntegrationProviderError("INVALID_ARGUMENT", "lead.company is required.", retryable=False)
         now = datetime.now(UTC)
         lead_id = uuid4()
+        email_value = lead.get("email")
+        phone_value = lead.get("phone")
         record = CrmLead(
             lead_id=lead_id,
             tenant_id=tenant_id,
             company=company,
-            email=lead.get("email") if isinstance(lead.get("email"), str) else None,
-            phone=lead.get("phone") if isinstance(lead.get("phone"), str) else None,
+            email=email_value if isinstance(email_value, str) else None,
+            phone=phone_value if isinstance(phone_value, str) else None,
             provider_lead_id=str(uuid5(NAMESPACE_URL, f"crm-lead:{lead_id}")),
             version=1,
             created_at=now,

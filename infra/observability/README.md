@@ -23,3 +23,8 @@ terminal status, safe error code, cache status, provider name, and domain onlyâ€
 session IDs, query text, or retrieved content.
 
 See `docs/MCP_RAG_SLO.md` for targets, expected load, and response procedures.
+
+`prometheus/integration-alerts.yaml` and `grafana/integration-dashboard.json` cover authenticated
+webhooks, provider quota protection, provider-action outcomes, reconciliation backlog,
+dead-letter work, and provider-truth discrepancies. See `docs/INTEGRATION_OPERATIONS.md` for the
+SLOs, access-review requirements, incident runbooks, and mandatory disaster exercises.

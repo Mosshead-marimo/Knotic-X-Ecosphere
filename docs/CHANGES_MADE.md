@@ -749,6 +749,14 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: `uv run pytest mcp/tests/test_followup.py mcp/tests/test_gateway.py -q` -> `20 passed`; `uv run mypy mcp/src` -> passed. Ruff passed after removing one unused import; full repository verification follows at the top of the stack.
 - Follow-up: Production deployments must inject durable consent/follow-up stores and a real approved messaging provider adapter; the checked-in adapter is a deterministic sandbox boundary and never contains live credentials.
 
+### 2026-09-05 — Implemented deterministic FR-13 escalation policy
+
+- Phase: 5 (`P5-T007`, GitHub #83)
+- Files: `backend/src/knotic_api/workflow/escalation.py`, `backend/src/knotic_api/workflow/next_action.py`, `backend/src/knotic_api/workflow/__init__.py`, `backend/tests/test_escalation_policy.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added a strict policy input/decision model for all eight FR-13 triggers, fixed precedence, priority assignment, unauthorized-discount blocking, a versioned persistence payload containing every trigger reason, and an enforced next-action override that routes to governed handoff regardless of conflicting free-form model intent.
+- Verification: Focused escalation and next-action suite -> `27 passed`; `uv run mypy backend/src` -> passed; Ruff and repository-wide verification follow at the top of the stack.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

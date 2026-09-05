@@ -41,6 +41,13 @@ from .contracts import (
     validate_graph_state,
     validate_node_update,
 )
+from .escalation import (
+    EscalationDecision,
+    EscalationPriority,
+    EscalationSignals,
+    EscalationTrigger,
+    evaluate_escalation,
+)
 from .execution import (
     BoundedGraphInvoker,
     GraphInvocationPort,
@@ -85,6 +92,10 @@ __all__ = [
     "ApprovalRequirement",
     "BoundedGraphInvoker",
     "CheckpointIdentity",
+    "EscalationDecision",
+    "EscalationPriority",
+    "EscalationSignals",
+    "EscalationTrigger",
     "ExtractableField",
     "ExtractedEntity",
     "GeneratedResponse",
@@ -138,6 +149,7 @@ __all__ = [
     "buying_stage_for_score",
     "decide_next_action",
     "detect_objection_node",
+    "evaluate_escalation",
     "execute_turn",
     "generate_response_node",
     "grounded_facts_from_result",

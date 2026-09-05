@@ -53,7 +53,7 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 - Acceptance: Follow-ups respect consent and are not marked delivered from an enqueue response alone.
 - Verify: Consent, duplicate, scheduling, bounce/failure, and provider callback tests.
 
-### [ ] P5-T007 — Implement deterministic escalation policy
+### [x] P5-T007 — Implement deterministic escalation policy
 
 - Dependencies: P2-T005–P2-T007.
 - Implement: Explicit request, enterprise, negotiation, security/legal, low-confidence, frustration, unsupported-question, and unauthorized-discount triggers; priority and approval rules.

@@ -60,7 +60,7 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 - Acceptance: High-impact paths cannot be overridden by free-form model output; trigger reason is persisted.
 - Verify: Trigger matrix, precedence, false-positive, and bypass tests.
 
-### [ ] P5-T008 — Implement structured human handoff
+### [x] P5-T008 — Implement structured human handoff
 
 - Dependencies: P5-T007, P5-T003.
 - Implement: Required FR-13 context packet, summary validation, target routing, availability, acknowledgement, transfer status, customer messaging, and fallback queue.

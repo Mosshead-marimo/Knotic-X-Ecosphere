@@ -30,6 +30,7 @@ from .calendar import CalendarProviderPort, InMemoryCalendarProvider, validate_t
 from .config import McpSettings, load_mcp_settings
 from .contracts import ToolEnvelope, ToolError, ToolInvocation, ToolStatus, TrustedContext
 from .crm import CrmLead, CrmProviderPort, InMemoryCrmProvider, find_lead
+from .followup import FollowupChannel, FollowupService, sandbox_followup_service
 from .integrations import (
     CircuitBreaker,
     CredentialStore,
@@ -69,6 +70,7 @@ _PROVIDER_FOR_TOOL: dict[str, str] = {
     "crm.add_call_summary": "crm_provider",
     "calendar.get_slots": "calendar_provider",
     "calendar.book_meeting": "calendar_provider",
+    "followup.create": "messaging_provider",
 }
 
 
@@ -179,6 +181,20 @@ def _succeeded(invocation: ToolInvocation, data: dict[str, Any]) -> ToolEnvelope
     )
 
 
+def _pending(
+    invocation: ToolInvocation, data: dict[str, Any], *, provider_reference: str | None = None
+) -> ToolEnvelope:
+    return ToolEnvelope(
+        tool_call_id=invocation.tool_call_id,
+        tool=invocation.tool,
+        version=invocation.version,
+        status=ToolStatus.PENDING,
+        data=data,
+        provider_reference=provider_reference,
+        started_at=datetime.now(UTC),
+    )
+
+
 def create_app(
     settings: McpSettings | None = None,
     *,
@@ -191,6 +207,7 @@ def create_app(
     observability: McpObservability | None = None,
     crm_provider: CrmProviderPort | None = None,
     calendar_provider: CalendarProviderPort | None = None,
+    followup_service: FollowupService | None = None,
     credential_store: CredentialStore | None = None,
     idempotency_store: IdempotencyStore | None = None,
 ) -> AsgiApp:
@@ -208,9 +225,10 @@ def create_app(
     )
     crm = crm_provider or InMemoryCrmProvider()
     calendar_service = calendar_provider or InMemoryCalendarProvider()
+    followups = followup_service or sandbox_followup_service()
     credentials = credential_store or _SandboxCredentialStore()
     idempotency = idempotency_store or InMemoryIdempotencyStore()
-    crm_breaker, calendar_breaker = CircuitBreaker(), CircuitBreaker()
+    crm_breaker, calendar_breaker, messaging_breaker = CircuitBreaker(), CircuitBreaker(), CircuitBreaker()
     integration_retry = RetryPolicy()
 
     def _credential_or_failure(
@@ -515,6 +533,60 @@ def create_app(
                 invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
             )
 
+    def followup_create(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("messaging", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        idempotency_key = invocation.idempotency_key
+        args = invocation.arguments
+        try:
+            scheduled_at = datetime.fromisoformat(str(args["scheduled_at"])).astimezone(UTC)
+            channel = FollowupChannel(str(args["channel"]))
+        except (ValueError, TypeError):
+            return _failed(invocation, "INVALID_ARGUMENT", "channel and scheduled_at are invalid.")
+
+        def perform() -> ToolEnvelope:
+            try:
+                followup = call_with_resilience(
+                    provider="messaging_provider",
+                    breaker=messaging_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: followups.create(
+                        tenant_id=context.tenant_id,
+                        lead_id=UUID(str(args["lead_id"])),
+                        channel=channel,
+                        scheduled_at=scheduled_at,
+                        content=str(args["content"]),
+                        idempotency_key=idempotency_key,
+                    ),
+                )
+            except IntegrationProviderError as error:
+                if error.code == "PENDING_CONFIRMATION":
+                    return _pending(invocation, {"followup_id": str(invocation.tool_call_id), "status": "PENDING"})
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _pending(
+                invocation,
+                {"followup_id": str(followup.followup_id), "status": "PENDING"},
+                provider_reference=followup.provider_reference,
+            )
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(
+                invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
+            )
+
     def knowledge_search(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
         matches = retrieval.search(
             tenant_id=context.tenant_id,
@@ -650,6 +722,7 @@ def create_app(
     _register_default("crm.add_call_summary", crm_add_call_summary)
     _register_default("calendar.get_slots", calendar_get_slots)
     _register_default("calendar.book_meeting", calendar_book_meeting)
+    _register_default("followup.create", followup_create)
     approval = ApprovalPolicy(hmac_key=resolved.auth_token.get_secret_value().encode())
 
     async def app(scope: dict[str, Any], receive: Any, send: AsgiSend) -> None:

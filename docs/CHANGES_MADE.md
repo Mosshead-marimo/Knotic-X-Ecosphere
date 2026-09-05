@@ -740,6 +740,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: `uv run pytest backend/tests/test_voice_certification.py -q` -> `4 passed`; full non-integration suite -> `325 passed, 28 deselected`; Ruff -> passed on 136 formatted files; mypy -> `71 source files`; frontend lint/typecheck/production build -> passed; API/data/MCP/operations validators -> passed; frontend/repository secret scans -> passed; conversation evaluation -> all six metrics `1.0`; `uv lock --check` and `git diff --check` -> passed. No signed performance report was generated because there is no trusted release key or production-like provider evidence in this workspace.
 - Blocker: Phase 4 entry criteria require approved Agora and speech-provider production accounts, quotas, regions, and data policies. Run the documented 1,000-turn/100-concurrent-call/120-minute matrix and soak against the exact candidate commit, then have a trusted release owner sign a `PASS` report.
 
+### 2026-09-05 — Implemented consent-aware follow-up creation and delivery
+
+- Phase: 5 (`P5-T006`, GitHub #82)
+- Files: `mcp/src/knotic_mcp/followup.py`, `mcp/src/knotic_mcp/app.py`, `mcp/src/knotic_mcp/registry.py`, `mcp/tests/test_followup.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added typed follow-up channels and delivery states, exact-match approved-template policy, tenant/lead/channel consent checks, scheduled delivery validation, deterministic provider idempotency, provider acknowledgement validation, callback deduplication and monotonic delivery transitions, unsubscribe cancellation, and append-only transition audit records. The MCP handler returns `PENDING` after enqueue acceptance and exposes final delivery only after a provider callback.
+- Verification: `uv run pytest mcp/tests/test_followup.py mcp/tests/test_gateway.py -q` -> `20 passed`; `uv run mypy mcp/src` -> passed. Ruff passed after removing one unused import; full repository verification follows at the top of the stack.
+- Follow-up: Production deployments must inject durable consent/follow-up stores and a real approved messaging provider adapter; the checked-in adapter is a deterministic sandbox boundary and never contains live credentials.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

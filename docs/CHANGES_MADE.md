@@ -61,7 +61,7 @@ Use one of these values for each phase: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`,
 | 2 | Adaptive sales workflow | COMPLETE |
 | 3 | MCP tools and grounded knowledge | IN_PROGRESS |
 | 4 | Realtime Agora voice experience | IN_PROGRESS |
-| 5 | CRM, calendar, follow-up, and handoff | NOT_STARTED |
+| 5 | CRM, calendar, follow-up, and handoff | IN_PROGRESS |
 | 6 | Hardening, observability, testing, and deployment | NOT_STARTED |
 
 ---

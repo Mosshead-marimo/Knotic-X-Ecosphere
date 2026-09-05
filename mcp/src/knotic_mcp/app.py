@@ -323,7 +323,9 @@ def create_app(
                 )
             except IntegrationProviderError as error:
                 return _failed(invocation, error.code, error.message, retryable=error.retryable)
-            return _succeeded(invocation, {"lead_id": str(lead.lead_id), "version": lead.version, "status": "SUCCEEDED"})
+            return _succeeded(
+                invocation, {"lead_id": str(lead.lead_id), "version": lead.version, "status": "SUCCEEDED"}
+            )
 
         try:
             return idempotent_write(

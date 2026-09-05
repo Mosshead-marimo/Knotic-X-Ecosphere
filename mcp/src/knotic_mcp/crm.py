@@ -75,13 +75,17 @@ class CrmLead:
         if isinstance(provider_lead_id, str) and provider_lead_id == self.provider_lead_id:
             score += 100
         email = lookup.get("email")
-        if isinstance(email, str) and self.email is not None and _normalized_email(email) == _normalized_email(
-            self.email
+        if (
+            isinstance(email, str)
+            and self.email is not None
+            and _normalized_email(email) == _normalized_email(self.email)
         ):
             score += 1
         phone = lookup.get("phone")
-        if isinstance(phone, str) and self.phone is not None and _normalized_phone(phone) == _normalized_phone(
-            self.phone
+        if (
+            isinstance(phone, str)
+            and self.phone is not None
+            and _normalized_phone(phone) == _normalized_phone(self.phone)
         ):
             score += 1
         company = lookup.get("company")
@@ -176,9 +180,7 @@ class InMemoryCrmProvider:
         if existing is None or existing.tenant_id != tenant_id:
             raise IntegrationProviderError("NOT_FOUND", "The lead does not exist for this tenant.", retryable=False)
         if existing.version != expected_version:
-            raise IntegrationProviderError(
-                "CONFLICT", "The lead was modified since expected_version.", retryable=False
-            )
+            raise IntegrationProviderError("CONFLICT", "The lead was modified since expected_version.", retryable=False)
         updated = replace(
             existing,
             company=str(changes.get("company", existing.company)),
@@ -205,9 +207,7 @@ class InMemoryCrmProvider:
         self._notes.setdefault(lead_id, []).append(note)
         return str(uuid5(NAMESPACE_URL, f"crm-note:{lead_id}:{len(self._notes[lead_id])}"))
 
-    def add_call_summary(
-        self, *, tenant_id: UUID, lead_id: UUID, session_id: UUID, summary: str, outcome: str
-    ) -> str:
+    def add_call_summary(self, *, tenant_id: UUID, lead_id: UUID, session_id: UUID, summary: str, outcome: str) -> str:
         existing = self._leads.get(lead_id)
         if existing is None or existing.tenant_id != tenant_id:
             raise IntegrationProviderError("NOT_FOUND", "The lead does not exist for this tenant.", retryable=False)

@@ -83,7 +83,9 @@ class CredentialUnavailable(Exception):
     """No usable (present, unexpired) credential exists for this tenant and provider."""
 
 
-def require_credential(store: CredentialStore, *, tenant_id: UUID, provider: str, now: datetime) -> IntegrationCredential:
+def require_credential(
+    store: CredentialStore, *, tenant_id: UUID, provider: str, now: datetime
+) -> IntegrationCredential:
     credential = store.get(tenant_id=tenant_id, provider=provider)
     if credential is None or credential.is_expired(at=now):
         raise CredentialUnavailable(f"no usable credential for tenant {tenant_id} and provider {provider}")

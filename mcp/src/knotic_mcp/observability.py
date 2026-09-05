@@ -127,6 +127,30 @@ class McpObservability:
             ("provider",),
             registry=self.registry,
         )
+        self.webhook_rejections = Counter(
+            "knotic_integration_webhook_rejections_total",
+            "Rejected integration webhooks by provider and safe reason",
+            ("provider", "reason"),
+            registry=self.registry,
+        )
+        self.provider_quota_denials = Counter(
+            "knotic_integration_provider_quota_denials_total",
+            "Provider calls blocked locally to preserve the configured quota",
+            ("provider",),
+            registry=self.registry,
+        )
+        self.pending_work = Gauge(
+            "knotic_integration_pending_work",
+            "Current provider reconciliation backlog by kind and status",
+            ("kind", "status"),
+            registry=self.registry,
+        )
+        self.discrepancies = Counter(
+            "knotic_integration_discrepancies_total",
+            "Internal/provider truth discrepancies by kind",
+            ("kind",),
+            registry=self.registry,
+        )
         self.knowledge_index_age_seconds = Gauge(
             "knotic_mcp_knowledge_index_age_seconds",
             "Seconds since the domain's knowledge index was last refreshed by the ingestion pipeline",
@@ -172,6 +196,18 @@ class McpObservability:
     def sample_provider_health(self, tracker: ProviderHealthTracker, providers: tuple[str, ...]) -> None:
         for provider in providers:
             self.provider_health.labels(provider=provider).set(0.0 if tracker.is_open(provider) else 1.0)
+
+    def record_webhook_rejection(self, *, provider: str, reason: str) -> None:
+        self.webhook_rejections.labels(provider=provider, reason=reason).inc()
+
+    def record_quota_denial(self, *, provider: str) -> None:
+        self.provider_quota_denials.labels(provider=provider).inc()
+
+    def set_pending_work(self, *, kind: str, status: str, count: int) -> None:
+        self.pending_work.labels(kind=kind, status=status).set(count)
+
+    def record_discrepancy(self, *, kind: str) -> None:
+        self.discrepancies.labels(kind=kind).inc()
 
     def render(self) -> tuple[bytes, str]:
         return generate_latest(self.registry), CONTENT_TYPE_LATEST

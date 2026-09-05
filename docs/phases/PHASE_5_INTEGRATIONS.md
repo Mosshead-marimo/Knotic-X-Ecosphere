@@ -80,6 +80,7 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 - Implement: Audit dashboards, provider quotas, alerts, runbooks, access review, webhook signature verification, egress allowlists, disaster exercises, and SLOs.
 - Acceptance: Integration failures and credential compromise scenarios have tested detection and response procedures.
 - Verify: Security review, webhook attacks, quota/load test, and incident drill.
+- Status: Control implementation and sandbox attack/load tests are complete. Production certification remains `INCOMPLETE` pending dated access-review, actual provider quota/egress, credential-rotation, and incident-drill evidence for the release environment.
 
 ## Phase gate
 

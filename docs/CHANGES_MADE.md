@@ -774,6 +774,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Verification: Focused outcome/reconciliation suite -> `5 passed`; `uv run mypy backend/src` -> passed; Ruff passed after a single unused-import cleanup. Full repository verification follows at the top of the stack.
 - Follow-up: Production composition must back the defined work/ledger ports with PostgreSQL outbox/inbox tables and schedule `run_due` through the selected worker platform.
 
+### 2026-09-05 — Implemented the integration security and operations certification controls
+
+- Phase: 5 (`P5-T010`, GitHub #86)
+- Files: `mcp/src/knotic_mcp/integration_security.py`, `mcp/src/knotic_mcp/observability.py`, `mcp/tests/test_integration_security.py`, `mcp/tests/test_integration_operations.py`, `infra/observability/prometheus/integration-alerts.yaml`, `infra/observability/grafana/integration-dashboard.json`, `infra/observability/README.md`, `docs/INTEGRATION_OPERATIONS.md`, `scripts/validate-operations-docs.mjs`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Certification controls implemented and locally verified; production certification `INCOMPLETE`. `P5-T010`, #86, and the Phase 5 gate remain open.
+- Summary: Added timestamped HMAC-SHA256 webhook verification with replay protection, tenant/provider quota guards, exact HTTPS egress origin enforcement, content-free integration metrics, a six-panel operations dashboard, five actionable alerts, SLOs, access-review requirements, and webhook/quota/credential-compromise/disaster-recovery runbooks. Tests simulate tampering, replay, stale/future timestamps, quota exhaustion/recovery, and egress bypass attempts.
+- Verification: Focused integration security/operations/observability suite -> `16 passed`; full non-integration Python suite -> `389 passed, 28 deselected`; Ruff format -> `154 files already formatted`; Ruff lint -> passed; mypy -> `80 source files`; frontend ESLint and TypeScript checks -> passed under Node `24.19.0`; API/data/MCP/operations validators and both secret scans -> passed; deliberate-secret scanner self-test -> passed; conversation evaluation -> all six metrics `1.0`; npm audit -> `0 vulnerabilities`; pip-audit -> no known vulnerabilities (workspace-only packages skipped because they are not published on PyPI); `uv lock --check` and `git diff --check` -> passed. The aggregate `npm run quality` wrapper cannot run on this host because recursive `npm` resolves the machine-wide Node `22.21.1`/npm `10.9.4`; its gates were run directly with the pinned Node `24.19.0` runtime and pinned npm `11.17.0` CLI where applicable.
+- Blocker: No dated production provider account/scope review, real quota/load evidence, deployed egress-policy evidence, credential-rotation evidence, or incident-drill record exists in this workspace. The production gate cannot truthfully pass until release owners attach and approve those artifacts.
+
 ## Maintenance rules
 
 - Update this file in the same change that modifies the project.

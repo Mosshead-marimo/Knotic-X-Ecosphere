@@ -25,7 +25,9 @@ from knotic_mcp.integrations import (
 
 _TENANT = uuid4()
 _NOW = datetime(2026, 9, 5, tzinfo=UTC)
-_FAR_DEADLINE = _NOW + timedelta(seconds=30)
+# call_with_resilience checks the *real* wall clock (datetime.now(UTC)), not this module's fixed
+# _NOW fixture, so a "comfortably in the future" deadline must be derived from the real clock too.
+_FAR_DEADLINE = datetime.now(UTC) + timedelta(minutes=5)
 
 
 def _envelope() -> ToolEnvelope:

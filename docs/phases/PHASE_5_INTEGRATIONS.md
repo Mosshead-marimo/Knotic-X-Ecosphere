@@ -46,7 +46,7 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 - Acceptance: Booking occurs only after explicit customer selection and is claimed only after provider confirmation.
 - Verify: Race, duplicate, expired slot, provider timeout, partial failure, and replay tests.
 
-### [ ] P5-T006 — Implement follow-up creation and delivery
+### [x] P5-T006 — Implement follow-up creation and delivery
 
 - Dependencies: P5-T001, P5-T003.
 - Implement: Approved templates/content, channel consent, scheduling, idempotency, delivery status, provider confirmation, unsubscribe policy, and audit.
@@ -84,4 +84,3 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 ## Phase gate
 
 All actions are provider-confirmed, idempotent, reconciled, secure, and observable; booking and handoff races pass; failures remain pending/recoverable without fabricated success.
-

@@ -174,6 +174,14 @@ def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]
             and arguments["stage"] != ""
             and (arguments["explicit_request"] is None or isinstance(arguments["explicit_request"], str))
         )
+    if definition.name == "followup.create":
+        return (
+            set(arguments) == {"lead_id", "channel", "scheduled_at", "content"}
+            and _is_uuid_str(arguments["lead_id"])
+            and arguments["channel"] in {"EMAIL", "SMS", "TASK"}
+            and _is_nonempty_str_bounded(arguments["scheduled_at"], max_length=64)
+            and _is_nonempty_str_bounded(arguments["content"], max_length=4000)
+        )
     if definition.name == "crm.get_lead":
         return set(arguments) == {"lookup"} and _is_object(arguments["lookup"], min_properties=1)
     if definition.name == "crm.create_lead":

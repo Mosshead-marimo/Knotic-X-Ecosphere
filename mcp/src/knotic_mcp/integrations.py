@@ -18,12 +18,10 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol, TypeVar
+from typing import Protocol
 from uuid import UUID
 
 from .contracts import ToolEnvelope
-
-T = TypeVar("T")
 
 
 class IntegrationProviderError(Exception):
@@ -159,7 +157,7 @@ class CircuitBreaker:
         return {provider: "degraded" if self.is_open(provider) else "ok" for provider in self._failures}
 
 
-def call_with_resilience(
+def call_with_resilience[T](
     *,
     provider: str,
     breaker: CircuitBreaker,
@@ -177,7 +175,9 @@ def call_with_resilience(
     itself did not classify -- propagates immediately, so a write whose outcome is actually
     unknown is never silently retried as if a retry were free.
     """
-    rng = rng or random.Random()
+    # Jitter timing only, never a security decision -- a predictable backoff delay is not a
+    # cryptographic weakness here.
+    rng = rng or random.Random()  # noqa: S311
     attempt = 1
     while True:
         breaker.before_call(provider)

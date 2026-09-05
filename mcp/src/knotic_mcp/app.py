@@ -36,15 +36,15 @@ from .integrations import (
     CredentialUnavailable,
     IdempotencyConflict,
     IdempotencyStore,
-    IntegrationCredential,
-    IntegrationProviderError,
     InMemoryCredentialStore,
     InMemoryIdempotencyStore,
+    IntegrationCredential,
+    IntegrationProviderError,
     RetryPolicy,
     call_with_resilience,
     idempotent_write,
-    require_credential,
     request_fingerprint,
+    require_credential,
 )
 from .knowledge import KnowledgeQueryService, KnowledgeStore, PgvectorRetrievalService
 from .observability import McpObservability

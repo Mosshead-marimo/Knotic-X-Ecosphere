@@ -13,10 +13,16 @@ export default async function CallPage({ params, searchParams }: CallPageProps) 
   const { sessionId } = await params;
   const { csrfToken } = await searchParams;
   const apiBaseUrl = process.env.NEXT_PUBLIC_KNOTIC_API_BASE_URL ?? "";
+  const mediaRegion = process.env.NEXT_PUBLIC_KNOTIC_VOICE_MEDIA_REGION ?? "GLOBAL";
 
   return (
     <main>
-      <VoiceCallPanel sessionId={sessionId} apiBaseUrl={apiBaseUrl} csrfToken={csrfToken ?? ""} />
+      <VoiceCallPanel
+        sessionId={sessionId}
+        apiBaseUrl={apiBaseUrl}
+        csrfToken={csrfToken ?? ""}
+        mediaRegion={mediaRegion}
+      />
     </main>
   );
 }

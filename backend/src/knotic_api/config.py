@@ -53,6 +53,12 @@ class BackendSettings(CommonSettings):
     allowed_origins: list[str] = Field(default_factory=list, validation_alias="KNOTIC_ALLOWED_ORIGINS")
     mcp_base_url: str = Field(validation_alias="KNOTIC_MCP_BASE_URL")
     agora_app_id: str = Field(validation_alias="KNOTIC_AGORA_APP_ID")
+    voice_policy_version: str = Field(
+        default="voice-processing-v1", min_length=1, max_length=64, validation_alias="KNOTIC_VOICE_POLICY_VERSION"
+    )
+    voice_media_regions: list[str] = Field(
+        default_factory=lambda: ["GLOBAL"], validation_alias="KNOTIC_VOICE_MEDIA_REGIONS"
+    )
     database_url: SecretStr
     redis_url: SecretStr
     mcp_auth_token: SecretStr
@@ -81,6 +87,16 @@ class BackendSettings(CommonSettings):
         if len(value.strip()) < 16 or any(placeholder in value.casefold() for placeholder in _PLACEHOLDERS):
             raise ValueError("KNOTIC_AGORA_APP_ID must be a non-placeholder provider identifier")
         return value.strip()
+
+    @field_validator("voice_media_regions")
+    @classmethod
+    def validate_voice_media_regions(cls, value: list[str]) -> list[str]:
+        normalized = [region.strip().upper() for region in value]
+        if not normalized or len(normalized) != len(set(normalized)):
+            raise ValueError("KNOTIC_VOICE_MEDIA_REGIONS must contain unique approved regions")
+        if any(not region.isascii() or not region.replace("-", "").isalnum() for region in normalized):
+            raise ValueError("KNOTIC_VOICE_MEDIA_REGIONS contains an invalid region")
+        return normalized
 
     @field_validator("database_url")
     @classmethod

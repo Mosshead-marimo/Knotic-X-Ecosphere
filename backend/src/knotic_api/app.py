@@ -14,7 +14,11 @@ from .config import BackendSettings, load_backend_settings
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 from .observability import StateDataObservability
 from .privacy_logging import install_sensitive_data_filter
+from .voice.event_sync import PostgresVoiceEventStore, VoiceEventSynchronizer
+from .voice.privacy import PostgresVoiceConsentStore, VoicePrivacyService
+from .voice.recovery import PostgresRecoveryStore, VoiceRecoveryCoordinator
 from .voice.session_service import AgoraSessionTokenService, LoggingAgoraAuditSink, RedisAgoraSessionStore
+from .voice.telemetry import VoiceObservability
 from .voice_api import VoiceDependencies, register_voice_api
 
 
@@ -43,6 +47,13 @@ def create_app(
     )
     register_lifecycle_api(app, dependencies)
 
+    voice_telemetry = VoiceObservability(
+        service_name=resolved.service_name,
+        environment=resolved.environment.value,
+        otlp_endpoint=resolved.otel_exporter_otlp_endpoint,
+    )
+    app.extensions["knotic_voice_observability"] = voice_telemetry
+
     voice_redis = redis.Redis.from_url(
         resolved.redis_url.get_secret_value(),
         decode_responses=False,
@@ -66,8 +77,16 @@ def create_app(
         ),
         agora_app_id=resolved.agora_app_id,
         allowed_origins=dependencies.allowed_origins,
+        event_synchronizer=VoiceEventSynchronizer(PostgresVoiceEventStore(dependencies.engine)),
+        privacy=VoicePrivacyService(
+            PostgresVoiceConsentStore(dependencies.engine),
+            policy_version=resolved.voice_policy_version,
+            allowed_media_regions=frozenset(resolved.voice_media_regions),
+        ),
+        telemetry=voice_telemetry,
     )
     register_voice_api(app, voice_dependencies)
+    app.extensions["knotic_voice_recovery"] = VoiceRecoveryCoordinator(PostgresRecoveryStore(dependencies.engine))
 
     @app.get("/api/v1/health/live")
     def live() -> ResponseReturnValue:
@@ -100,6 +119,7 @@ def create_app(
             return jsonify(error="unauthorized"), 401
         telemetry.sample_pool(dependencies.engine)
         payload, content_type = telemetry.render()
-        return Response(payload, content_type=content_type)
+        voice_payload, _ = voice_telemetry.render()
+        return Response(payload + voice_payload, content_type=content_type)
 
     return app

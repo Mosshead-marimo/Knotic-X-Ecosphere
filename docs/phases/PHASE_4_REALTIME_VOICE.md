@@ -50,28 +50,28 @@ Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding 
 - Acceptance: FR-02 behavior is deterministic; interrupted text is not treated as heard beyond the delivered boundary.
 - Verify: Repeated barge-in, false-positive, race, rapid-turn, and topic-change tests.
 
-### [ ] P4-T006 — Synchronize voice events with backend state
+### [x] P4-T006 — Synchronize voice events with backend state
 
 - Dependencies: P1-T008, P2-T009, P4-T003–P4-T005.
 - Implement: Ordered event protocol, sequence numbers, acknowledgements, idempotency, reconnect replay, and reconciliation between client, Agora, Flask, and LangGraph.
 - Acceptance: Disconnects and duplicate/out-of-order events cannot corrupt the conversation timeline.
 - Verify: Network partition, reordering, reconnect, multi-tab, and backend-restart tests.
 
-### [ ] P4-T007 — Implement recovery and graceful termination
+### [x] P4-T007 — Implement recovery and graceful termination
 
 - Dependencies: P4-T006.
 - Implement: Token renewal, transient reconnect, provider failover where approved, timeout policy, customer messaging, state persistence, and clean end-call behavior.
 - Acceptance: Recoverable faults resume within limits; unrecoverable faults preserve state and terminate without false claims.
 - Verify: Agora, speech, network, backend, and Redis failure drills.
 
-### [ ] P4-T008 — Enforce voice privacy, consent, and abuse controls
+### [x] P4-T008 — Enforce voice privacy, consent, and abuse controls
 
 - Dependencies: P4-T002, P4-T003.
 - Implement: Consent capture, recording/transcript policy, retention, sensitive-data handling, mute guarantees, abuse/rate controls, regional routing, and deletion workflow.
 - Acceptance: Data processing matches approved policy and consent; muted audio is not transmitted.
 - Verify: Privacy review, mute traffic inspection, retention/deletion test.
 
-### [ ] P4-T009 — Add end-to-end voice observability
+### [x] P4-T009 — Add end-to-end voice observability
 
 - Dependencies: P4-T003–P4-T007.
 - Implement: Per-turn traces for capture, transcription, graph, tools, synthesis, first audio, interruption, failures, and quality signals without logging sensitive content by default.
@@ -84,6 +84,7 @@ Use [`../AGORA_VOICE_AI.md`](../AGORA_VOICE_AI.md) for the Agora CLI onboarding 
 - Implement: Browser/device/network test matrix, concurrent-call capacity tests, latency percentiles, soak tests, quota monitoring, and release thresholds.
 - Acceptance: Approved p50/p95/p99 latency, interruption, error-rate, and concurrency targets pass in production-like infrastructure.
 - Verify: Signed performance report and release-gate results.
+- Current certification status: `INCOMPLETE` until approved provider/account/region/quota evidence and a signed production-like run for the exact release commit are supplied. The evaluator, matrix, thresholds, and signing workflow are implemented; this checkbox and the Phase 4 gate must remain open until the external evidence passes.
 
 ## Phase gate
 

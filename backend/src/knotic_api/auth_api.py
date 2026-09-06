@@ -10,7 +10,7 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal, cast
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
@@ -179,7 +179,10 @@ class OidcApi:
         raw_roles = claims.get(self.dependencies.settings.oidc_roles_claim, [])
         if isinstance(raw_roles, str):
             raw_roles = raw_roles.split()
-        roles = tuple(sorted({str(role).upper() for role in raw_roles} & _ALLOWED_ROLES))
+        roles = cast(
+            tuple[Literal["ADMIN", "SUPERVISOR", "SALES_REP", "CUSTOMER"], ...],
+            tuple(sorted({str(role).upper() for role in raw_roles} & _ALLOWED_ROLES)),
+        )
         if not roles:
             raise ValueError("identity has no supported role")
         display_name = str(claims.get(self.dependencies.settings.oidc_name_claim) or "Operator")[:120]
@@ -242,7 +245,7 @@ class OidcApi:
                     ),
                     {"id": new_uuid7(), "tenant_id": tenant_id, "actor_id": actor_id, "role": role},
                 )
-        actor_type = "CUSTOMER" if roles == ("CUSTOMER",) else "HUMAN_AGENT"
+        actor_type: Literal["CUSTOMER", "HUMAN_AGENT"] = "CUSTOMER" if roles == ("CUSTOMER",) else "HUMAN_AGENT"
         return AuthenticatedActor(tenant_id, actor_id, actor_type, roles, display_name), tenant_slug
 
     def _validate_id_token(self, discovery: dict[str, Any], raw: str, nonce: str) -> dict[str, Any]:
@@ -271,18 +274,18 @@ class OidcApi:
                 "code_verifier": verifier,
             }
         ).encode()
-        req = UrlRequest(
+        req = UrlRequest(  # noqa: S310 - URL is validated OIDC discovery metadata
             str(discovery["token_endpoint"]), body, {"Content-Type": "application/x-www-form-urlencoded"}, method="POST"
         )
         with urlopen(req, timeout=5) as response:  # noqa: S310 - validated provider metadata
-            return json.load(response)
+            return cast(dict[str, Any], json.load(response))
 
     def _discovery(self) -> dict[str, Any]:
         issuer = self.dependencies.settings.oidc_issuer
         if issuer is None:
             raise ValueError("OIDC is not configured")
         with urlopen(f"{issuer}/.well-known/openid-configuration", timeout=5) as response:  # noqa: S310
-            document = json.load(response)
+            document = cast(dict[str, Any], json.load(response))
         if document.get("issuer") != issuer:
             raise ValueError("OIDC discovery issuer mismatch")
         for field in ("authorization_endpoint", "token_endpoint", "jwks_uri"):

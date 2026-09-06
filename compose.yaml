@@ -118,6 +118,54 @@ services:
       resources:
         limits: {cpus: "1.0", memory: 768M}
 
+  events-api:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+    command: ["gunicorn", "--bind=0.0.0.0:8081", "--workers=2", "--threads=16", "--timeout=35", "--no-control-socket", "knotic_api.app:create_app()"]
+    environment:
+      <<: *app-environment
+      KNOTIC_BACKEND_HOST: 0.0.0.0
+      KNOTIC_BACKEND_PORT: "8081"
+      KNOTIC_ALLOWED_ORIGINS: '["http://localhost:3000"]'
+      KNOTIC_MCP_BASE_URL: http://mcp:8090
+      KNOTIC_AGORA_APP_ID: local-only-public-agora-app-id-0001
+      KNOTIC_AGORA_APP_CERTIFICATE: local-only-public-agora-certificate-0000000001
+      KNOTIC_SESSION_SECURITY_KEY: local-only-public-session-key-00000000000001
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      mcp: {condition: service_healthy}
+    networks: [application, data]
+    deploy:
+      resources:
+        limits: {cpus: "0.75", memory: 512M}
+
+  event-relay:
+    <<: *service-defaults
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+    command: ["knotic-event-relay"]
+    environment:
+      <<: *app-environment
+      KNOTIC_MCP_BASE_URL: http://mcp:8090
+      KNOTIC_AGORA_APP_ID: local-only-public-agora-app-id-0001
+      KNOTIC_AGORA_APP_CERTIFICATE: local-only-public-agora-certificate-0000000001
+      KNOTIC_SESSION_SECURITY_KEY: local-only-public-session-key-00000000000001
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    networks: [application, data]
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 256M}
+
   frontend:
     <<: *service-defaults
     build:
@@ -125,11 +173,13 @@ services:
       dockerfile: infra/docker/frontend.Dockerfile
     environment:
       BACKEND_INTERNAL_URL: http://backend:8080
+      EVENTS_INTERNAL_URL: http://events-api:8081
     ports: ["127.0.0.1:3000:3000"]
     read_only: true
     tmpfs: [/tmp]
     depends_on:
       backend: {condition: service_healthy}
+      events-api: {condition: service_started}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)})"]
       interval: 5s

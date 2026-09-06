@@ -13,6 +13,7 @@ from sqlalchemy.engine import Engine
 
 from knotic_api.app import create_app
 from knotic_api.config import BackendSettings
+from knotic_api.event_stream import DomainEventRelay, EventStreamDependencies
 from knotic_api.lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies
 
 ROOT = Path(__file__).parents[2]
@@ -115,9 +116,7 @@ def test_dev_session_logout_requires_csrf_and_revokes_cookie(
     bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
     csrf_token = bootstrap.get_json()["csrf_token"]
     assert client.post("/api/v1/auth/logout", headers={"Origin": ORIGIN}).status_code == 403
-    signed_out = client.post(
-        "/api/v1/auth/logout", headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token}
-    )
+    signed_out = client.post("/api/v1/auth/logout", headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token})
     assert signed_out.status_code == 200
     assert client.get("/api/v1/auth/session").status_code == 401
 
@@ -126,7 +125,7 @@ def test_dev_session_logout_requires_csrf_and_revokes_cookie(
 def test_operator_console_lists_sessions_and_requests_idempotent_handoff(
     dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
 ) -> None:
-    _, _, dependencies, settings = dev_auth_services
+    engine, redis_client, dependencies, settings = dev_auth_services
     client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
     bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
     csrf_token = bootstrap.get_json()["csrf_token"]
@@ -145,15 +144,38 @@ def test_operator_console_lists_sessions_and_requests_idempotent_handoff(
     headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf_token, "Idempotency-Key": "console-handoff-00000000001"}
     first = client.post(
         f"/api/v1/console/sessions/{session['session_id']}/handoff",
-        json={"reason": "Customer requested a person", "priority": "HIGH", "expected_session_version": session["version"]},
+        json={
+            "reason": "Customer requested a person",
+            "priority": "HIGH",
+            "expected_session_version": session["version"],
+        },
         headers=headers,
     )
     assert first.status_code == 202
     assert first.get_json()["status"] == "requested"
     replay = client.post(
         f"/api/v1/console/sessions/{session['session_id']}/handoff",
-        json={"reason": "Customer requested a person", "priority": "HIGH", "expected_session_version": session["version"]},
+        json={
+            "reason": "Customer requested a person",
+            "priority": "HIGH",
+            "expected_session_version": session["version"],
+        },
         headers=headers,
     )
     assert replay.status_code == 200
     assert replay.get_json()["id"] == first.get_json()["id"]
+
+    relay = DomainEventRelay(
+        EventStreamDependencies(engine, redis_client, dependencies.browser_sessions, settings.environment.value)
+    )
+    assert relay.relay_once() >= 1
+    stream = client.get(
+        "/api/v1/console/stream",
+        headers={"Last-Event-ID": "0-0"},
+        buffered=False,
+    )
+    assert stream.status_code == 200
+    chunks = iter(stream.response)
+    assert b"event: ready" in next(chunks)
+    assert b"event: session.changed" in next(chunks)
+    stream.close()

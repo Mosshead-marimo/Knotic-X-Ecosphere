@@ -16,6 +16,7 @@ from .config import BackendSettings, load_backend_settings
 from .console_api import ConsoleDependencies, register_console_api
 from .auth_api import AuthDependencies, register_oidc_api
 from .dev_auth_api import DevAuthDependencies, register_dev_auth_api
+from .event_stream import EventStreamDependencies, register_event_stream_api
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 from .observability import StateDataObservability
 from .privacy_logging import install_sensitive_data_filter
@@ -77,6 +78,15 @@ def create_app(
             browser_sessions=dependencies.browser_sessions,
             rate_limiter=dependencies.rate_limiter,
             allowed_origins=dependencies.allowed_origins,
+        ),
+    )
+    register_event_stream_api(
+        app,
+        EventStreamDependencies(
+            engine=dependencies.engine,
+            redis_client=auth_redis,
+            browser_sessions=dependencies.browser_sessions,
+            environment=resolved.environment.value,
         ),
     )
 

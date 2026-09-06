@@ -31,14 +31,16 @@ const SAFE_RESPONSE_HEADERS = new Set([
 ]);
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
-  const baseUrl = process.env.BACKEND_INTERNAL_URL;
+  const { path } = await context.params;
+  const baseUrl = path.join("/") === "console/stream"
+    ? process.env.EVENTS_INTERNAL_URL ?? process.env.BACKEND_INTERNAL_URL
+    : process.env.BACKEND_INTERNAL_URL;
   if (!baseUrl) {
     return Response.json(
       { error: { code: "BACKEND_NOT_CONFIGURED", message: "The application backend is unavailable." } },
       { status: 503 },
     );
   }
-  const { path } = await context.params;
   const target = new URL(`/api/v1/${path.map(encodeURIComponent).join("/")}`, baseUrl);
   target.search = request.nextUrl.search;
   const headers = new Headers();

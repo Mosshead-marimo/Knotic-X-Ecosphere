@@ -16,7 +16,7 @@ export default async function CallPage({ params, searchParams }: CallPageProps) 
   const mediaRegion = process.env.NEXT_PUBLIC_KNOTIC_VOICE_MEDIA_REGION ?? "GLOBAL";
 
   return (
-    <main>
+    <main className="flex min-h-screen items-center justify-center bg-brand-bg px-6 py-16">
       <VoiceCallPanel
         sessionId={sessionId}
         apiBaseUrl={apiBaseUrl}

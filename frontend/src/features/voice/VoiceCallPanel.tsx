@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Mic, MicOff, PhoneCall, PhoneOff } from "lucide-react";
 import { useAgoraCall, type CallStatus } from "./useAgoraCall";
 
 export interface VoiceCallPanelProps {
@@ -19,6 +20,18 @@ const STATUS_LABEL: Record<CallStatus, string> = {
   ending: "Ending call…",
   ended: "Call ended.",
   error: "The call could not continue.",
+};
+
+// Visual-only indicator color per status; does not affect the CallStatus union or STATUS_LABEL copy.
+const STATUS_DOT_CLASS: Record<CallStatus, string> = {
+  idle: "bg-brand-muted",
+  "requesting-permission": "bg-brand-secondary animate-pulse",
+  connecting: "bg-brand-secondary animate-pulse",
+  connected: "bg-green-600",
+  reconnecting: "bg-brand-primary animate-pulse",
+  ending: "bg-brand-muted animate-pulse",
+  ended: "bg-brand-muted",
+  error: "bg-red-600",
 };
 
 /**
@@ -45,35 +58,58 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
   const canJoin = consentGiven && (status === "idle" || status === "ended" || status === "error");
 
   return (
-    <section aria-label="Voice call">
-      <p>
+    <section
+      aria-label="Voice call"
+      className="mx-auto w-full max-w-lg rounded-3xl border border-brand-border bg-white p-8 shadow-xl"
+    >
+      <p className="mb-6 text-sm leading-relaxed text-brand-muted">
         Starting a call processes your audio in real time. Raw audio is not recorded by default.{" "}
-        <label>
+        <label className="mt-2 inline-flex items-center gap-2 font-medium text-black">
           <input
             type="checkbox"
             checked={consentGiven}
             onChange={(event) => setConsentGiven(event.target.checked)}
             disabled={showEndCallButton}
+            className="h-4 w-4 rounded border-brand-border text-brand-primary focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"
           />{" "}
           I consent to this call being processed.
         </label>
       </p>
 
-      <p role="status" aria-live="polite">
+      <p
+        role="status"
+        aria-live="polite"
+        className="mb-2 flex items-center gap-2 text-sm font-semibold text-black"
+      >
+        <span className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASS[status]}`} aria-hidden="true" />
         {STATUS_LABEL[status]}
       </p>
 
       {status === "error" && errorMessage ? (
-        <p role="alert">{errorMessage}</p>
+        <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {errorMessage}
+        </p>
       ) : null}
 
-      <div>
+      <div className="mt-6 flex items-center gap-4">
         {showEndCallButton ? (
-          <button type="button" onClick={() => void leave()} disabled={isEnding}>
+          <button
+            type="button"
+            onClick={() => void leave()}
+            disabled={isEnding}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <PhoneOff className="h-5 w-5" aria-hidden="true" />
             End call
           </button>
         ) : (
-          <button type="button" onClick={() => void join()} disabled={!canJoin}>
+          <button
+            type="button"
+            onClick={() => void join()}
+            disabled={!canJoin}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-primary px-6 py-3 text-base font-semibold text-white transition-colors hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <PhoneCall className="h-5 w-5" aria-hidden="true" />
             Start call
           </button>
         )}
@@ -83,7 +119,9 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
           onClick={() => void toggleMute()}
           disabled={!isActive}
           aria-pressed={muted}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-border bg-white px-6 py-3 text-base font-semibold text-black transition-colors hover:bg-brand-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-secondary disabled:cursor-not-allowed disabled:opacity-50"
         >
+          {muted ? <MicOff className="h-5 w-5" aria-hidden="true" /> : <Mic className="h-5 w-5" aria-hidden="true" />}
           {muted ? "Unmute" : "Mute"}
         </button>
       </div>

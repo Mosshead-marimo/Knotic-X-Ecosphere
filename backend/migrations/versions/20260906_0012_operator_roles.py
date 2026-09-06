@@ -24,14 +24,18 @@ def upgrade() -> None:
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("actor_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("role", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("timezone('utc', now())"), nullable=False),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), server_default=sa.text("timezone('utc', now())"), nullable=False
+        ),
         sa.CheckConstraint("role in ('ADMIN','SUPERVISOR','SALES_REP','CUSTOMER')", name="valid_role"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["tenant_id", "actor_id"], ["actors.tenant_id", "actors.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("tenant_id", "actor_id", "role", name="uq_operator_role_assignment"),
     )
-    op.create_index("ix_operator_roles_tenant_role_actor", "operator_role_assignments", ["tenant_id", "role", "actor_id"])
+    op.create_index(
+        "ix_operator_roles_tenant_role_actor", "operator_role_assignments", ["tenant_id", "role", "actor_id"]
+    )
     op.create_index(
         "ix_domain_events_tenant_occurred_id",
         "domain_events",
@@ -45,7 +49,11 @@ def upgrade() -> None:
     predicate = "tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid"
     op.execute("alter table operator_role_assignments enable row level security")
     op.execute("alter table operator_role_assignments force row level security")
-    op.execute(sa.text(f"create policy tenant_isolation on operator_role_assignments using ({predicate}) with check ({predicate})"))
+    op.execute(
+        sa.text(
+            f"create policy tenant_isolation on operator_role_assignments using ({predicate}) with check ({predicate})"
+        )
+    )
     op.execute("grant select,insert,update,delete on table operator_role_assignments to knotic_runtime")
     op.execute("grant select on table operator_role_assignments to knotic_auditor")
 

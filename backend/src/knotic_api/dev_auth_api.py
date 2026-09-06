@@ -94,6 +94,7 @@ class DevAuthApi:
             return response
 
         response = jsonify(
+            authenticated=True,
             csrf_token=csrf_token,
             expires_at=expires_at.isoformat().replace("+00:00", "Z"),
             actor={"actor_id": str(DEMO_ACTOR_ID), "display_name": "Local operator", "roles": ["ADMIN"]},

@@ -1,13 +1,13 @@
 "use client";
 
-import { Activity, AlertTriangle, CheckCircle2, Clock3, Database, RefreshCw, TrendingUp } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, Clock3, RefreshCw, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { consoleApi } from "./api";
 import { EmptyState, PageHeader } from "./ConsoleShell";
 import { useConsole } from "./ConsoleProvider";
-import type { Analytics, IntegrationStatus, SessionDetail, SessionPage, SystemStatus } from "./types";
+import type { Analytics, SessionDetail, SessionPage, SystemStatus } from "./types";
 
 export function SessionsPage() {
   const { sessions, refreshSessions } = useConsole();
@@ -29,14 +29,6 @@ export function PerformancePage() {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { void consoleApi.analytics(days).then(setData).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Analytics are unavailable.")); }, [days]);
   return <><PageHeader eyebrow="Intelligence" title="Performance" description="Aggregated operational outcomes with no raw customer content." action={<select value={days} onChange={(event) => setDays(Number(event.target.value))} className="rounded-lg border border-ops-border bg-ops-panel px-3 py-2 text-xs"><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select>} /><div className="p-5 lg:p-8">{error ? <p role="alert" className="text-ops-red">{error}</p> : null}{data ? <><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Sessions" value={String(data.totals.sessions)} icon={Activity} /><Metric label="Conversion" value={`${data.conversion_rate}%`} icon={TrendingUp} /><Metric label="Avg qualification" value={`${data.totals.average_qualification}%`} icon={CheckCircle2} /><Metric label="Avg duration" value={`${Math.round(data.totals.average_duration_seconds / 60)} min`} icon={Clock3} /></div><section className="mt-6 rounded-2xl border border-ops-border bg-ops-panel p-5"><h2 className="text-sm font-bold">Outcome distribution</h2>{data.outcomes.length ? <div className="mt-5 space-y-3">{data.outcomes.map((item) => <div key={item.outcome} className="flex items-center gap-3"><span className="w-48 truncate text-xs text-ops-muted">{item.outcome.replaceAll("_", " ")}</span><div className="h-2 flex-1 rounded-full bg-ops-soft"><div className="h-full rounded-full bg-ops-blue" style={{ width: `${Math.max(3, item.count / data.totals.sessions * 100)}%` }} /></div><span className="w-8 text-right font-mono text-xs">{item.count}</span></div>)}</div> : <EmptyState title="No analytics yet" detail="Metrics appear after sessions are created." />}</section></> : <p role="status" className="text-sm text-ops-muted">Loading analytics…</p>}</div></>;
-}
-
-export function IntegrationsPage() {
-  const [data, setData] = useState<IntegrationStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const load = () => void consoleApi.integrations().then(setData).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Integration status is unavailable."));
-  useEffect(load, []);
-  return <><PageHeader eyebrow="Intelligence" title="MCP gateway" description="Sanitized provider health and pending-work truth. Credentials remain deployment-managed." action={<button onClick={load} className="rounded-lg border border-ops-border px-3 py-2 text-xs">Refresh</button>} /><div className="p-5 lg:p-8">{error ? <p role="alert" className="text-ops-red">{error}</p> : null}{data ? <><div className={`rounded-2xl border p-5 ${data.mcp.status === "available" ? "border-ops-green/30 bg-ops-green/5" : "border-ops-amber/30 bg-ops-amber/5"}`}><p className="text-xs text-ops-muted">MCP service</p><p className="mt-2 text-lg font-bold capitalize">{data.mcp.status}</p></div><div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{data.providers.map((provider) => <article key={provider.provider} className="rounded-2xl border border-ops-border bg-ops-panel p-5"><Database className="h-5 w-5 text-ops-blue" /><h2 className="mt-4 font-bold">{provider.provider}</h2><p className="mt-2 text-xs text-ops-muted">{Object.entries(provider.counts).map(([key, value]) => `${key}: ${value}`).join(" · ") || "No queued work"}</p><p className="mt-4 text-[10px] text-ops-muted">Last activity: {provider.last_activity_at ? new Date(provider.last_activity_at).toLocaleString() : "Never"}</p></article>)}</div>{!data.providers.length ? <div className="mt-5"><EmptyState title="No provider work" detail="No external provider operations have been recorded for this tenant." /></div> : null}</> : <p className="text-sm text-ops-muted">Loading integration status…</p>}</div></>;
 }
 
 export function SystemPage() {

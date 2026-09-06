@@ -229,3 +229,51 @@ def test_knowledge_upload_validation_queue_and_tombstone(
     )
     assert reindexed.status_code == 202
     assert reindexed.get_json()["status"] == "queued"
+
+
+@pytest.mark.integration
+def test_mcp_registration_is_governed_idempotent_and_listed_without_credentials(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    _, _, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    headers = {
+        "Origin": ORIGIN,
+        "X-CSRF-Token": csrf_token,
+        "Idempotency-Key": "mcp-registration-000000000001",
+    }
+    payload = {
+        "display_name": "Product knowledge",
+        "server_url": "https://mcp.vendor.example/mcp",
+        "transport": "STREAMABLE_HTTP",
+        "auth_scheme": "BEARER",
+        "capabilities": ["KNOWLEDGE"],
+    }
+
+    requested = client.post("/api/v1/console/integrations", json=payload, headers=headers)
+    assert requested.status_code == 202, requested.get_json()
+    assert requested.get_json()["status"] == "requested"
+    assert requested.headers["Location"].startswith("/api/v1/console/integrations?registration_id=")
+    assert requested.headers["X-Request-ID"]
+    registration_id = requested.get_json()["id"]
+
+    replay = client.post("/api/v1/console/integrations", json=payload, headers=headers)
+    assert replay.status_code == 200
+    assert replay.get_json()["id"] == registration_id
+
+    listing = client.get("/api/v1/console/integrations")
+    assert listing.status_code == 200
+    assert listing.headers["X-Request-ID"]
+    registration = next(item for item in listing.get_json()["registrations"] if item["id"] == registration_id)
+    assert registration["capabilities"] == ["KNOWLEDGE"]
+    assert "token" not in registration
+    assert "secret" not in registration
+
+    rejected = client.post(
+        "/api/v1/console/integrations",
+        json={**payload, "server_url": "http://127.0.0.1:8090/mcp"},
+        headers={**headers, "Idempotency-Key": "mcp-registration-unsafe-00001"},
+    )
+    assert rejected.status_code == 422

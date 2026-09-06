@@ -829,6 +829,14 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Record verified behavior, not planned or assumed behavior, in the change log.
 - Do not use this file to silently change requirements or architecture.
 
+### 2026-09-06 — Added governed MCP server registration to the operator console
+
+- Scope: tenant MCP registration request and frontend administration flow.
+- Files: `backend/migrations/versions/20260906_0014_mcp_server_registrations.py`, `backend/src/knotic_api/console_api.py`, backend integration/schema tests, `frontend/src/features/control-center/McpIntegrationPanel.tsx`, typed frontend API/contracts, `docs/API_CONTRACTS.md`, `docs/DATA_MODEL.md`, `docs/contracts/openapi.v1.json`, `docs/MCP_INTEGRATION_GUIDE.md`, and related indexes/change records.
+- Summary: Added an admin/supervisor-only **Add MCP** dialog and same-origin mutation. The browser submits only a display name, HTTPS endpoint, transport, authentication scheme, and allow-listed capabilities. Flask validates the endpoint shape, enforces session/role/origin/CSRF/rate/idempotency controls, persists a forced-RLS tenant registration, and writes a content-minimized audit event. The public state starts as `requested`; credential binding and activation remain platform-owned and cannot be represented as successful before validation. Secret values are never accepted or returned.
+- Verification: pinned Node `24.19.0` frontend lint/typecheck and Docker production build passed; Ruff passed for changed Python files; mypy passed for 63 source files; API contract validator passed with 19 operations, 58 schemas, and 15 examples; data-model validator and frontend secret scan passed. Docker migration reached `20260906_0014`; PostgreSQL reported forced RLS `true,true`. A request through the live Next.js gateway returned HTTP `202`/`requested`, the tenant listing contained the registration, no secret field was present, and one audit event was recorded. Browser verification rendered the registered server and accessible Add MCP dialog without a framework error overlay.
+- Remaining activation work: implement the restricted egress validation worker, secret-provider reference binding, tool-registry certification, and a separately authorized activation endpoint before any requested third-party MCP server can become operational. See `MCP_INTEGRATION_GUIDE.md`.
+
 ### 2026-09-06 — Connected the VoxSales operator console to live service boundaries
 
 - Scope: production frontend delivery on `feature/operator-console-live`, stacked on `feature/voxsales-control-center`.

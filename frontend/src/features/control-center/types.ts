@@ -70,6 +70,22 @@ export interface IntegrationStatus {
     counts: Record<string, number>;
     last_activity_at: string | null;
   }>;
+  registrations: McpServerRegistration[];
+}
+
+export type McpCapability = "KNOWLEDGE" | "CRM" | "CALENDAR" | "MESSAGING" | "HANDOFF";
+
+export interface McpServerRegistration {
+  id: string;
+  display_name: string;
+  server_url: string;
+  transport: "STREAMABLE_HTTP" | "SSE";
+  auth_scheme: "NONE" | "BEARER" | "OAUTH2";
+  capabilities: McpCapability[];
+  status: "requested" | "validating" | "active" | "rejected" | "deactivated" | "failed";
+  safe_status_detail: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SystemStatus {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import re
 from collections.abc import Iterator
@@ -13,14 +14,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
+from urllib.parse import urlparse
 from urllib.request import urlopen
 from uuid import UUID
 
 import redis
 import sqlalchemy as sa
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 from flask.typing import ResponseReturnValue
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy.engine import Connection, Engine, RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
@@ -50,6 +52,44 @@ class HandoffRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=500)
     priority: Literal["LOW", "NORMAL", "HIGH", "URGENT"] = "NORMAL"
     expected_session_version: int = Field(ge=1)
+
+
+class McpRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    display_name: str = Field(min_length=2, max_length=80)
+    server_url: str = Field(min_length=12, max_length=500)
+    transport: Literal["STREAMABLE_HTTP", "SSE"] = "STREAMABLE_HTTP"
+    auth_scheme: Literal["NONE", "BEARER", "OAUTH2"] = "BEARER"
+    capabilities: list[Literal["KNOWLEDGE", "CRM", "CALENDAR", "MESSAGING", "HANDOFF"]] = Field(
+        min_length=1, max_length=5
+    )
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("MCP server URL must be an HTTPS URL without embedded credentials")
+        if parsed.query or parsed.fragment:
+            raise ValueError("MCP server URL must not include query parameters or fragments")
+        hostname = parsed.hostname.casefold()
+        if hostname == "localhost" or hostname.endswith(".localhost"):
+            raise ValueError("MCP server URL must not target localhost")
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            address = None
+        if address and not address.is_global:
+            raise ValueError("MCP server URL must not target a private or reserved IP address")
+        return value.rstrip("/")
+
+    @field_validator("capabilities")
+    @classmethod
+    def validate_capabilities(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("MCP capabilities must be unique")
+        return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +137,7 @@ class ConsoleApi:
             "/api/v1/console/integrations",
             endpoint="console_integrations",
             view_func=self.integrations,
-            methods=["GET"],
+            methods=["GET", "POST"],
         )
         app.add_url_rule("/api/v1/console/system", endpoint="console_system", view_func=self.system, methods=["GET"])
         app.add_url_rule(
@@ -405,6 +445,8 @@ class ConsoleApi:
 
     def integrations(self) -> ResponseReturnValue:
         try:
+            if request.method == "POST":
+                return self._request_mcp_registration()
             actor, _ = self._authorize(action="console-integrations-read")
             with self._connection(actor) as connection:
                 rows = list(
@@ -417,6 +459,16 @@ class ConsoleApi:
                         {"tenant_id": actor.tenant_id},
                     ).mappings()
                 )
+                registrations = list(
+                    connection.execute(
+                        sa.text(
+                            "select id,display_name,server_url,transport,auth_scheme,capabilities,status,"
+                            "safe_status_detail,created_at,updated_at from mcp_server_registrations "
+                            "where tenant_id=:tenant_id order by updated_at desc,id desc limit 100"
+                        ),
+                        {"tenant_id": actor.tenant_id},
+                    ).mappings()
+                )
             mcp_status = self._mcp_status()
             providers: dict[str, dict[str, Any]] = {}
             for row in rows:
@@ -425,9 +477,109 @@ class ConsoleApi:
                 )
                 item["counts"][str(row["status"]).lower()] = row["count"]
                 item["last_activity_at"] = self._timestamp(row["last_activity_at"])
-            return jsonify(mcp={"status": mcp_status}, providers=list(providers.values()))
+            return self._console_response(
+                {
+                    "mcp": {"status": mcp_status},
+                    "providers": list(providers.values()),
+                    "registrations": [self._mcp_registration_resource(row) for row in registrations],
+                }
+            )
         except ConsoleProblem as problem:
             return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Integrations are unavailable."))
+
+    def _request_mcp_registration(self) -> ResponseReturnValue:
+        actor, _ = self._authorize(action="console-mcp-register", mutation=True, roles=_ADMIN_ROLES)
+        payload = self._json(McpRegistrationRequest)
+        key = self._idempotency_header()
+        key_hmac = hmac.new(self._idempotency_key, key.encode(), hashlib.sha256).digest()
+        canonical = json.dumps(payload.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode()
+        request_hash = hashlib.sha256(canonical).digest()
+        registration_id, now = new_uuid7(), datetime.now(UTC)
+        with self._connection(actor) as connection:
+            existing = (
+                connection.execute(
+                    sa.text(
+                        "select id,display_name,server_url,transport,auth_scheme,capabilities,status,"
+                        "safe_status_detail,created_at,updated_at,request_hash from mcp_server_registrations "
+                        "where tenant_id=:tenant_id and request_key_hmac=:key"
+                    ),
+                    {"tenant_id": actor.tenant_id, "key": key_hmac},
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None:
+                if not hmac.compare_digest(existing["request_hash"], request_hash):
+                    raise ConsoleProblem(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was used for another request.")
+                return self._console_response(self._mcp_registration_resource(existing))
+            connection.execute(
+                sa.text(
+                    "insert into mcp_server_registrations "
+                    "(id,tenant_id,requested_by,display_name,server_url,transport,auth_scheme,capabilities,"
+                    "status,safe_status_detail,request_key_hmac,request_hash,created_at,updated_at) values "
+                    "(:id,:tenant_id,:actor_id,:display_name,:server_url,:transport,:auth_scheme,:capabilities,"
+                    "'REQUESTED',:detail,:key,:request_hash,:at,:at)"
+                ),
+                {
+                    "id": registration_id,
+                    "tenant_id": actor.tenant_id,
+                    "actor_id": actor.actor_id,
+                    "display_name": payload.display_name,
+                    "server_url": payload.server_url,
+                    "transport": payload.transport,
+                    "auth_scheme": payload.auth_scheme,
+                    "capabilities": payload.capabilities,
+                    "detail": "Awaiting platform validation and deployment-managed credentials.",
+                    "key": key_hmac,
+                    "request_hash": request_hash,
+                    "at": now,
+                },
+            )
+            connection.execute(
+                sa.text(
+                    "insert into audit_events "
+                    "(id,tenant_id,actor_id,workload,action,target_type,target_id,approval_decision,"
+                    "idempotency_key_hmac,request_schema_version,result,correlation_id,redacted_metadata,occurred_at) "
+                    "values (:audit_id,:tenant_id,:actor_id,'console','mcp.registration.requested','MCP_SERVER',"
+                    ":target_id,'PLATFORM_REVIEW_REQUIRED',:key,1,'REQUESTED',:correlation_id,"
+                    "cast(:metadata as jsonb),:at)"
+                ),
+                {
+                    "audit_id": new_uuid7(),
+                    "tenant_id": actor.tenant_id,
+                    "actor_id": actor.actor_id,
+                    "target_id": registration_id,
+                    "key": key_hmac,
+                    "correlation_id": new_uuid7(),
+                    "metadata": json.dumps(
+                        {
+                            "hostname": urlparse(payload.server_url).hostname,
+                            "transport": payload.transport,
+                            "auth_scheme": payload.auth_scheme,
+                            "capabilities": payload.capabilities,
+                        }
+                    ),
+                    "at": now,
+                },
+            )
+        return self._console_response(
+            {
+                "id": str(registration_id),
+                "display_name": payload.display_name,
+                "server_url": payload.server_url,
+                "transport": payload.transport,
+                "auth_scheme": payload.auth_scheme,
+                "capabilities": payload.capabilities,
+                "status": "requested",
+                "safe_status_detail": "Awaiting platform validation and deployment-managed credentials.",
+                "created_at": self._timestamp(now),
+                "updated_at": self._timestamp(now),
+            },
+            status=202,
+            location=f"/api/v1/console/integrations?registration_id={registration_id}",
+        )
 
     def system(self) -> ResponseReturnValue:
         try:
@@ -446,7 +598,7 @@ class ConsoleApi:
                 checks["redis"] = "unavailable"
             checks["mcp"] = self._mcp_status()
             status = "ok" if all(value in {"ok", "available"} for value in checks.values()) else "degraded"
-            return jsonify(status=status, checks=checks, service="knotic-api", schema_revision="20260906_0013")
+            return jsonify(status=status, checks=checks, service="knotic-api", schema_revision="20260906_0014")
         except ConsoleProblem as problem:
             return self._problem(problem)
 
@@ -832,6 +984,30 @@ class ConsoleApi:
             "priority": row["priority"],
             "created_at": ConsoleApi._timestamp(row["created_at"]),
         }
+
+    @staticmethod
+    def _mcp_registration_resource(row: RowMapping) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "display_name": row["display_name"],
+            "server_url": row["server_url"],
+            "transport": row["transport"],
+            "auth_scheme": row["auth_scheme"],
+            "capabilities": list(row["capabilities"]),
+            "status": str(row["status"]).lower(),
+            "safe_status_detail": row["safe_status_detail"],
+            "created_at": ConsoleApi._timestamp(row["created_at"]),
+            "updated_at": ConsoleApi._timestamp(row["updated_at"]),
+        }
+
+    @staticmethod
+    def _console_response(body: dict[str, Any], *, status: int = 200, location: str | None = None) -> Response:
+        response = jsonify(body)
+        response.status_code = status
+        response.headers["X-Request-ID"] = str(new_uuid7())
+        if location is not None:
+            response.headers["Location"] = location
+        return response
 
     @staticmethod
     def _timestamp(value: datetime) -> str:

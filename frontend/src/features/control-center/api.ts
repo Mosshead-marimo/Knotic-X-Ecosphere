@@ -4,6 +4,8 @@ import type {
   BrowserSession,
   IntegrationStatus,
   KnowledgeDocument,
+  McpCapability,
+  McpServerRegistration,
   SessionDetail,
   SessionPage,
   SystemStatus,
@@ -40,6 +42,25 @@ export const consoleApi = {
   sessionDetail: (id: string) => request<SessionDetail>(`/console/sessions/${encodeURIComponent(id)}`),
   analytics: (days: number) => request<Analytics>(`/console/analytics?days=${days}`),
   integrations: () => request<IntegrationStatus>("/console/integrations"),
+  requestMcpRegistration: (
+    session: BrowserSession,
+    input: {
+      display_name: string;
+      server_url: string;
+      transport: "STREAMABLE_HTTP" | "SSE";
+      auth_scheme: "NONE" | "BEARER" | "OAUTH2";
+      capabilities: McpCapability[];
+    },
+  ) =>
+    request<McpServerRegistration>("/console/integrations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": session.csrf_token,
+        "Idempotency-Key": crypto.randomUUID().replaceAll("-", "") + Date.now(),
+      },
+      body: JSON.stringify(input),
+    }),
   system: () => request<SystemStatus>("/console/system"),
   knowledge: () => request<{ items: KnowledgeDocument[] }>("/console/knowledge/documents"),
   uploadKnowledge: (session: BrowserSession, file: File, domain: string) => {

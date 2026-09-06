@@ -249,6 +249,7 @@ The Next.js same-origin gateway owns `/api/v1/*` in the browser and streams requ
 | `POST /api/v1/console/knowledge/documents/{document_id}/deactivate` | `ADMIN`, `SUPERVISOR` | Reversible tombstone; `confirmed` means only the database transition is committed. |
 | `POST /api/v1/console/knowledge/documents/{document_id}/reindex` | `ADMIN`, `SUPERVISOR` | Enqueues MCP knowledge work and returns `queued`. |
 | `GET /api/v1/console/integrations` | Operator roles | Sanitized provider/MCP state without credentials or payloads. |
+| `POST /api/v1/console/integrations` | `ADMIN`, `SUPERVISOR` | Requests tenant MCP registration; requires CSRF and idempotency and returns `requested`, never active. |
 | `GET /api/v1/console/system` | Operator roles | Safe service, schema, database, cache, and MCP readiness. |
 | `GET /api/v1/console/pending-work` | Operator roles | Durable external work states. |
 | `POST /api/v1/console/pending-work/{work_id}/retry` | `ADMIN`, `SUPERVISOR` | Only allow-listed retryable states become `queued`. |
@@ -256,6 +257,8 @@ The Next.js same-origin gateway owns `/api/v1/*` in the browser and streams requ
 | `DELETE /api/v1/sessions/{session_id}/voice/agent` | Authorized call participant | Stops the recorded managed agent; provider failure is not reported as success. |
 
 Operational action states are lower-case at the public boundary: `confirmed`, `requested`, `queued`, `pending`, and `failed`. A queued request is never a confirmed external action. Knowledge uploads are limited to 5,000,000 bytes, strict UTF-8, `.txt` or `.md`, and an allow-listed text MIME type. Their normalized SHA-256 checksum and tenant ownership are persisted; source content is chunked inside the tenant transaction and indexing is handled asynchronously through `MCP_KNOWLEDGE` pending work.
+
+MCP registration accepts only a display name, public HTTPS server URL without embedded credentials/query/fragment, `STREAMABLE_HTTP` or legacy `SSE` transport, declared authentication scheme, and an allow-listed capability set. It never accepts secret values. The durable state begins as `requested`; platform validation must verify DNS resolution, egress, TLS, tool schemas, scopes, quotas, ownership, and deployment-managed credentials before a separate activation workflow may set it active.
 
 Agora Conversational AI is configured server-side with ARES ASR, OpenAI TTS, AI VAD/interruption, and a private OpenAI-compatible Flask/LangGraph URL. Managed-environment startup requires all Agora REST, OpenAI TTS, and private LLM credentials. The browser sees only short-lived RTC credentials and the confirmed agent UID.
 

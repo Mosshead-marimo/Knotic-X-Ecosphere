@@ -116,9 +116,18 @@ services:
       KNOTIC_BACKEND_PORT: "8080"
       KNOTIC_ALLOWED_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
       KNOTIC_MCP_BASE_URL: http://mcp:8090
-      KNOTIC_AGORA_APP_ID: local-only-public-agora-app-id-0001
-      KNOTIC_AGORA_APP_CERTIFICATE: local-only-public-agora-certificate-0000000001
-      KNOTIC_SESSION_SECURITY_KEY: local-only-public-session-key-00000000000001
+      KNOTIC_AGORA_APP_ID: ${KNOTIC_AGORA_APP_ID:-local-only-public-agora-app-id-0001}
+      KNOTIC_AGORA_APP_CERTIFICATE: ${KNOTIC_AGORA_APP_CERTIFICATE:-local-only-public-agora-certificate-0000000001}
+      KNOTIC_SESSION_SECURITY_KEY: ${KNOTIC_SESSION_SECURITY_KEY:-local-only-public-session-key-00000000000001}
+      # The managed-agent/LLM-bridge credentials below are server-only and only ever needed by
+      # this service -- never inject them into the frontend or mcp services (see docs/CHANGES_MADE.md).
+      KNOTIC_OPENAI_API_KEY: ${KNOTIC_OPENAI_API_KEY:-}
+      KNOTIC_AGORA_CUSTOMER_ID: ${KNOTIC_AGORA_CUSTOMER_ID:-}
+      KNOTIC_AGORA_CUSTOMER_SECRET: ${KNOTIC_AGORA_CUSTOMER_SECRET:-}
+      KNOTIC_AGORA_AGENT_API_URL: ${KNOTIC_AGORA_AGENT_API_URL:-https://api.agora.io/api/conversational-ai-agent/v2}
+      KNOTIC_AGORA_LLM_URL: ${KNOTIC_AGORA_LLM_URL:-}
+      KNOTIC_AGORA_LLM_API_KEY: ${KNOTIC_AGORA_LLM_API_KEY:-}
+      KNOTIC_AGORA_WEBHOOK_SIGNING_SECRET: ${KNOTIC_AGORA_WEBHOOK_SIGNING_SECRET:-}
     ports: ["127.0.0.1:8080:8080"]
     read_only: true
     tmpfs: [/tmp]

@@ -24,6 +24,7 @@ _OPTIONAL_SECRETS = {
     "agora_customer_id": "KNOTIC_AGORA_CUSTOMER_ID",
     "agora_customer_secret": "KNOTIC_AGORA_CUSTOMER_SECRET",
     "agora_llm_api_key": "KNOTIC_AGORA_LLM_API_KEY",
+    "agora_webhook_signing_secret": "KNOTIC_AGORA_WEBHOOK_SIGNING_SECRET",
 }
 _PLACEHOLDERS = ("change-me", "replace-me", "example-only", "insert-secret")
 
@@ -91,6 +92,7 @@ class BackendSettings(CommonSettings):
         default="https://api.agora.io/api/conversational-ai-agent/v2",
         validation_alias="KNOTIC_AGORA_AGENT_API_URL",
     )
+    agora_webhook_signing_secret: SecretStr | None = None
 
     @field_validator("mcp_base_url")
     @classmethod
@@ -168,6 +170,11 @@ class BackendSettings(CommonSettings):
     def validate_agora_customer_id(cls, value: SecretStr | None) -> SecretStr | None:
         return _validate_secret("KNOTIC_AGORA_CUSTOMER_ID", value, 8) if value is not None else None
 
+    @field_validator("agora_webhook_signing_secret")
+    @classmethod
+    def validate_agora_webhook_signing_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        return _validate_secret("KNOTIC_AGORA_WEBHOOK_SIGNING_SECRET", value, 16) if value is not None else None
+
     @field_validator("agora_llm_url", "agora_agent_api_url")
     @classmethod
     def validate_agora_urls(cls, value: str | None) -> str | None:
@@ -232,6 +239,21 @@ class BackendSettings(CommonSettings):
             if not (self.agora_llm_url or "").startswith("https://"):
                 raise ValueError("KNOTIC_AGORA_LLM_URL must use HTTPS in managed environments")
         return self
+
+    @property
+    def managed_agent_configured(self) -> bool:
+        """Whether every credential the Agora Conversational AI managed-agent flow needs is set.
+
+        The cleanup worker (``voice.agent_cleanup``) checks this and skips cleanly rather than
+        crash on a missing value, since this feature is optional at settings-load time (see the
+        comment on ``_OPTIONAL_SECRETS``).
+        """
+        return (
+            self.agora_customer_id is not None
+            and self.agora_customer_secret is not None
+            and self.agora_llm_url is not None
+            and self.agora_llm_api_key is not None
+        )
 
 
 def load_backend_settings(

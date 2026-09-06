@@ -60,6 +60,7 @@ Desktop.ini
 *.pid
 *.pid.lock
 docker-data/
+compose.override.yaml
 .terraform/
 *.tfstate
 *.tfstate.*

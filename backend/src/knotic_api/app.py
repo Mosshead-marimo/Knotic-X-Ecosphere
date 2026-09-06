@@ -12,6 +12,7 @@ from flask.typing import ResponseReturnValue
 
 from knotic_config import RuntimeEnvironment
 
+from .agent_webhook import AgentWebhookDependencies, register_agent_webhook_api
 from .auth_api import AuthDependencies, register_oidc_api
 from .config import BackendSettings, load_backend_settings
 from .console_api import ConsoleDependencies, register_console_api
@@ -19,7 +20,9 @@ from .dev_auth_api import DevAuthDependencies, register_dev_auth_api
 from .event_stream import EventStreamDependencies, register_event_stream_api
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 from .observability import StateDataObservability
+from .persistence.hydration import SalesStateHydrator, StateFieldCipher
 from .privacy_logging import install_sensitive_data_filter
+from .voice.agent_llm import AgentLlmDependencies, register_agent_llm_api
 from .voice.event_sync import PostgresVoiceEventStore, VoiceEventSynchronizer
 from .voice.managed_agent import ManagedAgentConfiguration, ManagedAgentService
 from .voice.privacy import PostgresVoiceConsentStore, VoicePrivacyService
@@ -27,6 +30,10 @@ from .voice.recovery import PostgresRecoveryStore, VoiceRecoveryCoordinator
 from .voice.session_service import AgoraSessionTokenService, LoggingAgoraAuditSink, RedisAgoraSessionStore
 from .voice.telemetry import VoiceObservability
 from .voice_api import VoiceDependencies, register_voice_api
+from .workflow.execution import BoundedGraphInvoker, PostgresWorkflowCheckpointStore
+from .workflow.graph import build_sales_graph
+from .workflow.response_generation import OpenAIResponseGeneration
+from .workflow.understanding import OpenAITurnUnderstanding
 
 
 def create_app(
@@ -150,6 +157,7 @@ def create_app(
                 openai_api_key=resolved.openai_api_key.get_secret_value() if resolved.openai_api_key else None,
                 llm_url=resolved.agora_llm_url,
                 llm_api_key=resolved.agora_llm_api_key.get_secret_value() if resolved.agora_llm_api_key else None,
+                session_security_key=resolved.session_security_key.get_secret_value().encode(),
                 api_base_url=resolved.agora_agent_api_url,
             ),
             voice_redis,
@@ -158,6 +166,48 @@ def create_app(
     )
     register_voice_api(app, voice_dependencies)
     app.extensions["knotic_voice_recovery"] = VoiceRecoveryCoordinator(PostgresRecoveryStore(dependencies.engine))
+
+    if resolved.managed_agent_configured:
+        assert resolved.agora_llm_api_key is not None  # noqa: S101 - narrowed by managed_agent_configured above
+        understanding_port = (
+            OpenAITurnUnderstanding.from_settings(resolved) if resolved.openai_api_key is not None else None
+        )
+        response_generation_port = (
+            OpenAIResponseGeneration.from_settings(resolved) if resolved.openai_api_key is not None else None
+        )
+        graph_invoker = BoundedGraphInvoker(
+            build_sales_graph(
+                understanding_port=understanding_port,
+                response_generation_port=response_generation_port,
+            )
+        )
+        register_agent_llm_api(
+            app,
+            AgentLlmDependencies(
+                hydrator=SalesStateHydrator(
+                    dependencies.engine,
+                    dependencies.active_states,
+                    field_cipher=StateFieldCipher(resolved.session_security_key.get_secret_value().encode()),
+                ),
+                graph_invoker=graph_invoker,
+                checkpoint_store=PostgresWorkflowCheckpointStore(
+                    dependencies.engine, encryption_key=resolved.session_security_key.get_secret_value().encode()
+                ),
+                llm_api_key=resolved.agora_llm_api_key.get_secret_value(),
+                session_security_key=resolved.session_security_key.get_secret_value().encode(),
+            ),
+        )
+
+    if resolved.agora_webhook_signing_secret is not None:
+        register_agent_webhook_api(
+            app,
+            AgentWebhookDependencies(
+                signing_secret=resolved.agora_webhook_signing_secret.get_secret_value(),
+                redis_client=voice_redis,
+                environment=resolved.environment.value,
+                logger=app.logger,
+            ),
+        )
 
     @app.get("/api/v1/health/live")
     def live() -> ResponseReturnValue:

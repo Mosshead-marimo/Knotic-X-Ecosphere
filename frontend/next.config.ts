@@ -2,6 +2,7 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const config: NextConfig = {
+  agentRules: false,
   output: "standalone",
   poweredByHeader: false,
   // Turbopack can mis-infer the workspace root in an npm-workspaces monorepo (this app's

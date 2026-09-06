@@ -24,14 +24,14 @@ const STATUS_LABEL: Record<CallStatus, string> = {
 
 // Visual-only indicator color per status; does not affect the CallStatus union or STATUS_LABEL copy.
 const STATUS_DOT_CLASS: Record<CallStatus, string> = {
-  idle: "bg-brand-muted",
-  "requesting-permission": "bg-brand-secondary animate-pulse",
-  connecting: "bg-brand-secondary animate-pulse",
-  connected: "bg-green-600",
-  reconnecting: "bg-brand-primary animate-pulse",
-  ending: "bg-brand-muted animate-pulse",
-  ended: "bg-brand-muted",
-  error: "bg-red-600",
+  idle: "bg-ops-muted",
+  "requesting-permission": "bg-ops-blue animate-pulse",
+  connecting: "bg-ops-blue animate-pulse",
+  connected: "bg-ops-green",
+  reconnecting: "bg-ops-amber animate-pulse",
+  ending: "bg-ops-muted animate-pulse",
+  ended: "bg-ops-muted",
+  error: "bg-ops-red",
 };
 
 /**
@@ -60,17 +60,17 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
   return (
     <section
       aria-label="Voice call"
-      className="mx-auto w-full max-w-lg rounded-3xl border border-brand-border bg-white p-8 shadow-xl"
+      className="mx-auto w-full max-w-lg rounded-3xl border border-ops-border bg-ops-panel p-8 shadow-2xl"
     >
-      <p className="mb-6 text-sm leading-relaxed text-brand-muted">
+      <p className="mb-6 text-sm leading-relaxed text-ops-muted">
         Starting a call processes your audio in real time. Raw audio is not recorded by default.{" "}
-        <label className="mt-2 inline-flex items-center gap-2 font-medium text-black">
+        <label className="mt-2 inline-flex items-center gap-2 font-medium text-ops-text">
           <input
             type="checkbox"
             checked={consentGiven}
             onChange={(event) => setConsentGiven(event.target.checked)}
             disabled={showEndCallButton}
-            className="h-4 w-4 rounded border-brand-border text-brand-primary focus-visible:ring-2 focus-visible:ring-brand-primary focus-visible:ring-offset-2"
+            className="h-4 w-4 rounded border-ops-border text-ops-blue focus-visible:ring-2 focus-visible:ring-ops-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-ops-panel"
           />{" "}
           I consent to this call being processed.
         </label>
@@ -79,14 +79,14 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
       <p
         role="status"
         aria-live="polite"
-        className="mb-2 flex items-center gap-2 text-sm font-semibold text-black"
+        className="mb-2 flex items-center gap-2 text-sm font-semibold text-ops-text"
       >
         <span className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASS[status]}`} aria-hidden="true" />
         {STATUS_LABEL[status]}
       </p>
 
       {status === "error" && errorMessage ? (
-        <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <p role="alert" className="mb-4 rounded-xl border border-ops-red/30 bg-ops-red/10 p-3 text-sm text-ops-red">
           {errorMessage}
         </p>
       ) : null}
@@ -97,7 +97,7 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
             type="button"
             onClick={() => void leave()}
             disabled={isEnding}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-ops-red px-6 py-3 text-base font-semibold text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PhoneOff className="h-5 w-5" aria-hidden="true" />
             End call
@@ -107,7 +107,7 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
             type="button"
             onClick={() => void join()}
             disabled={!canJoin}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand-primary px-6 py-3 text-base font-semibold text-white transition-colors hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-ops-blue px-6 py-3 text-base font-semibold text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <PhoneCall className="h-5 w-5" aria-hidden="true" />
             Start call
@@ -119,7 +119,7 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
           onClick={() => void toggleMute()}
           disabled={!isActive}
           aria-pressed={muted}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-border bg-white px-6 py-3 text-base font-semibold text-black transition-colors hover:bg-brand-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-secondary disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-ops-border bg-ops-raised px-6 py-3 text-base font-semibold text-ops-text transition-colors hover:bg-ops-soft disabled:cursor-not-allowed disabled:opacity-50"
         >
           {muted ? <MicOff className="h-5 w-5" aria-hidden="true" /> : <Mic className="h-5 w-5" aria-hidden="true" />}
           {muted ? "Unmute" : "Mute"}

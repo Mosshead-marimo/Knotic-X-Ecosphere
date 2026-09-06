@@ -1,35 +1,47 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-bg: #fdfcfc;
-  --color-brand-primary: #ff4704;
-  --color-brand-secondary: #0447ff;
-  --color-brand-accent: #0a59d2;
-  --color-brand-muted: #777169;
-  --color-brand-surface: #e5e5e5;
-  --color-brand-border: #ebe8e4;
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --color-ops-base: #08090c;
+  --color-ops-panel: #101217;
+  --color-ops-raised: #171a21;
+  --color-ops-soft: #20242d;
+  --color-ops-border: #292e39;
+  --color-ops-text: #f6f7f9;
+  --color-ops-muted: #949baa;
+  --color-ops-blue: #4f8cff;
+  --color-ops-cyan: #4ed9c7;
+  --color-ops-green: #42d392;
+  --color-ops-amber: #f6b94a;
+  --color-ops-red: #ff647c;
+  --font-sans: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
-.text-balance {
-  text-wrap: balance;
-}
+* { box-sizing: border-box; }
+html { background: var(--color-ops-base); color-scheme: dark; }
+body { margin: 0; }
+button, a, input, select { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--color-ops-cyan); outline-offset: 3px; }
 
-/* Visible keyboard-focus state for every interactive element, site-wide, so no link or button
-   relies on hover alone to signal it's interactive (P7-T004). */
-:focus-visible {
-  outline: 2px solid var(--color-brand-primary);
-  outline-offset: 2px;
-  border-radius: 2px;
+.ops-scrollbar { scrollbar-color: var(--color-ops-border) transparent; scrollbar-width: thin; }
+.ops-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.status-pulse { animation: status-pulse 2s ease-in-out infinite; }
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(66, 211, 146, 0.3); }
+  50% { opacity: 0.65; box-shadow: 0 0 0 5px rgba(66, 211, 146, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
   }
 }

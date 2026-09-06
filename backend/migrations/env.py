@@ -14,7 +14,8 @@ if config.config_file_name is not None:
 
 database_url = os.environ.get("KNOTIC_DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    sqlalchemy_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    config.set_main_option("sqlalchemy.url", sqlalchemy_url.replace("%", "%%"))
 
 target_metadata = metadata
 

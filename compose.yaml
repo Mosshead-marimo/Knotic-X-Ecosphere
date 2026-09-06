@@ -86,6 +86,25 @@ services:
       resources:
         limits: {cpus: "0.75", memory: 512M}
 
+  migrate:
+    <<: *service-defaults
+    restart: "no"
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+    command: ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    environment:
+      <<: *app-environment
+      KNOTIC_MCP_BASE_URL: http://mcp:8090
+      KNOTIC_AGORA_APP_ID: local-only-public-agora-app-id-0001
+      KNOTIC_AGORA_APP_CERTIFICATE: local-only-public-agora-certificate-0000000001
+      KNOTIC_SESSION_SECURITY_KEY: local-only-public-session-key-00000000000001
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [application, data]
+
   backend:
     <<: *service-defaults
     build:
@@ -104,6 +123,7 @@ services:
     read_only: true
     tmpfs: [/tmp]
     depends_on:
+      migrate: {condition: service_completed_successfully}
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       mcp: {condition: service_healthy}
@@ -136,6 +156,7 @@ services:
     read_only: true
     tmpfs: [/tmp]
     depends_on:
+      migrate: {condition: service_completed_successfully}
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       mcp: {condition: service_healthy}
@@ -159,6 +180,7 @@ services:
     read_only: true
     tmpfs: [/tmp]
     depends_on:
+      migrate: {condition: service_completed_successfully}
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
     networks: [application, data]

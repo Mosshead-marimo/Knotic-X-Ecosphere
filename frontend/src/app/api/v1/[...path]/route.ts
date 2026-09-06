@@ -47,7 +47,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   for (const [name, value] of request.headers) {
     if (SAFE_REQUEST_HEADERS.has(name.toLowerCase())) headers.set(name, value);
   }
-  headers.set("Origin", request.nextUrl.origin);
+  headers.set("Origin", request.headers.get("origin") ?? request.nextUrl.origin);
   headers.set("X-Forwarded-Host", request.nextUrl.host);
   headers.set("X-Forwarded-Proto", request.nextUrl.protocol.replace(":", ""));
 

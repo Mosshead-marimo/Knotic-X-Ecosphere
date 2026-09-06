@@ -10,6 +10,8 @@ COPY packages/config/src packages/config/src
 COPY mcp/pyproject.toml mcp/README.md mcp/
 COPY backend/pyproject.toml backend/README.md backend/
 COPY backend/src backend/src
+COPY backend/alembic.ini backend/
+COPY backend/migrations backend/migrations
 RUN uv sync --locked --no-dev --no-editable --package knotic-api
 
 FROM python:3.13.14-slim-bookworm@sha256:67a1e1f215ccda113cfc024e8639049257e88f273898f595b61476d128d387e8 AS runtime
@@ -17,6 +19,8 @@ ENV PATH=/workspace/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 RUN groupadd --gid 10001 knotic && useradd --uid 10001 --gid knotic --no-create-home --shell /usr/sbin/nologin knotic
 WORKDIR /workspace
 COPY --from=builder --chown=10001:10001 /workspace/.venv /workspace/.venv
+COPY --from=builder --chown=10001:10001 /workspace/backend/alembic.ini /workspace/backend/alembic.ini
+COPY --from=builder --chown=10001:10001 /workspace/backend/migrations /workspace/backend/migrations
 USER 10001:10001
 EXPOSE 8080
 CMD ["gunicorn", "--bind=0.0.0.0:8080", "--workers=2", "--threads=4", "--timeout=30", "--no-control-socket", "knotic_api.app:create_app()"]

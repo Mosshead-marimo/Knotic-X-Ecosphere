@@ -73,7 +73,13 @@ class DevAuthApi:
 
         cookie = secrets.token_urlsafe(32)
         csrf_token = secrets.token_urlsafe(32)
-        actor = AuthenticatedActor(tenant_id=DEMO_TENANT_ID, actor_id=DEMO_ACTOR_ID, actor_type="HUMAN_AGENT")
+        actor = AuthenticatedActor(
+            tenant_id=DEMO_TENANT_ID,
+            actor_id=DEMO_ACTOR_ID,
+            actor_type="HUMAN_AGENT",
+            roles=("ADMIN",),
+            display_name="Local operator",
+        )
         expires_at = datetime.now(UTC) + _SESSION_TTL
 
         try:
@@ -87,7 +93,12 @@ class DevAuthApi:
             response.status_code = 503
             return response
 
-        response = jsonify(csrf_token=csrf_token, expires_at=expires_at.isoformat().replace("+00:00", "Z"))
+        response = jsonify(
+            csrf_token=csrf_token,
+            expires_at=expires_at.isoformat().replace("+00:00", "Z"),
+            actor={"actor_id": str(DEMO_ACTOR_ID), "display_name": "Local operator", "roles": ["ADMIN"]},
+            tenant={"tenant_id": str(DEMO_TENANT_ID), "slug": "local-demo"},
+        )
         response.set_cookie(
             _COOKIE_NAME,
             cookie,
@@ -107,6 +118,20 @@ class DevAuthApi:
                     "on conflict (id) do nothing"
                 ),
                 {"id": DEMO_TENANT_ID},
+            )
+            connection.execute(
+                sa.text(
+                    "insert into actors (id,tenant_id,actor_type,status) values (:id,:tenant_id,'USER','ACTIVE') "
+                    "on conflict (id) do nothing"
+                ),
+                {"id": DEMO_ACTOR_ID, "tenant_id": DEMO_TENANT_ID},
+            )
+            connection.execute(
+                sa.text(
+                    "insert into operator_role_assignments (id,tenant_id,actor_id,role) "
+                    "values (:id,:tenant_id,:actor_id,'ADMIN') on conflict (tenant_id,actor_id,role) do nothing"
+                ),
+                {"id": DEMO_ACTOR_ID, "tenant_id": DEMO_TENANT_ID, "actor_id": DEMO_ACTOR_ID},
             )
 
 

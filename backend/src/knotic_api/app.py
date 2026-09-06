@@ -13,6 +13,7 @@ from flask.typing import ResponseReturnValue
 from knotic_config import RuntimeEnvironment
 
 from .config import BackendSettings, load_backend_settings
+from .auth_api import AuthDependencies, register_oidc_api
 from .dev_auth_api import DevAuthDependencies, register_dev_auth_api
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 from .observability import StateDataObservability
@@ -49,6 +50,23 @@ def create_app(
         allowed_origins=resolved.allowed_origins,
     )
     register_lifecycle_api(app, dependencies)
+
+    auth_redis = redis.Redis.from_url(
+        resolved.redis_url.get_secret_value(),
+        decode_responses=False,
+        socket_connect_timeout=1,
+        socket_timeout=5,
+        health_check_interval=30,
+    )
+    register_oidc_api(
+        app,
+        AuthDependencies(
+            settings=resolved,
+            engine=dependencies.engine,
+            redis_client=auth_redis,
+            browser_sessions=dependencies.browser_sessions,
+        ),
+    )
 
     if resolved.environment in {RuntimeEnvironment.DEVELOPMENT, RuntimeEnvironment.TEST}:
         register_dev_auth_api(

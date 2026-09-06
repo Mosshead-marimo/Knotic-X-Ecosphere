@@ -77,6 +77,11 @@ def test_dev_session_issues_a_cookie_that_can_create_a_real_sales_session(
     csrf_token = bootstrap.get_json()["csrf_token"]
     assert "knotic_session" in bootstrap.headers.get("Set-Cookie", "")
 
+    session = client.get("/api/v1/auth/session")
+    assert session.status_code == 200
+    assert session.get_json()["csrf_token"] == csrf_token
+    assert session.get_json()["actor"]["roles"] == ["ADMIN"]
+
     # A second bootstrap call must not fail even though the demo tenant row already exists.
     second_bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
     assert second_bootstrap.status_code == 200
@@ -98,3 +103,19 @@ def test_dev_session_issues_a_cookie_that_can_create_a_real_sales_session(
             sa.text("select count(*) from tenants where slug = 'local-demo'")
         ).scalar_one()
     assert tenant_count == 1
+
+
+@pytest.mark.integration
+def test_dev_session_logout_requires_csrf_and_revokes_cookie(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    _, _, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    assert client.post("/api/v1/auth/logout", headers={"Origin": ORIGIN}).status_code == 403
+    signed_out = client.post(
+        "/api/v1/auth/logout", headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token}
+    )
+    assert signed_out.status_code == 200
+    assert client.get("/api/v1/auth/session").status_code == 401

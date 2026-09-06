@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import base64
 import re
 import secrets
 import time
@@ -53,7 +54,7 @@ class BrowserSessionValue(BaseModel):
     roles: tuple[Literal["ADMIN", "SUPERVISOR", "SALES_REP", "CUSTOMER"], ...] = ()
     display_name: str = "Operator"
     csrf_hmac: str
-    csrf_ciphertext: bytes
+    csrf_ciphertext: str
     expires_at: AwareDatetime
 
     @field_validator("tenant_id", "actor_id")
@@ -98,7 +99,9 @@ class RedisBrowserSessionStore:
             roles=actor.roles,
             display_name=actor.display_name,
             csrf_hmac=self._token_hmac(self._csrf_key, csrf_token),
-            csrf_ciphertext=self._csrf_cipher.encrypt(csrf_token.encode(), associated_data=self._key(cookie).encode()),
+            csrf_ciphertext=base64.urlsafe_b64encode(
+                self._csrf_cipher.encrypt(csrf_token.encode(), associated_data=self._key(cookie).encode())
+            ).decode(),
             expires_at=expires_at,
         )
         try:
@@ -152,7 +155,8 @@ class RedisBrowserSessionStore:
         if cookie is None:
             raise SecurityDependencyUnavailable("browser session cookie is absent")
         try:
-            token = self._csrf_cipher.decrypt(value.csrf_ciphertext, associated_data=self._key(cookie).encode()).decode()
+            ciphertext = base64.urlsafe_b64decode(value.csrf_ciphertext.encode())
+            token = self._csrf_cipher.decrypt(ciphertext, associated_data=self._key(cookie).encode()).decode()
         except (ValueError, UnicodeDecodeError) as error:
             raise SecurityDependencyUnavailable("browser session CSRF token is invalid") from error
         if not self.verify_csrf(value, token):

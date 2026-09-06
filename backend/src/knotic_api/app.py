@@ -13,6 +13,7 @@ from flask.typing import ResponseReturnValue
 from knotic_config import RuntimeEnvironment
 
 from .config import BackendSettings, load_backend_settings
+from .console_api import ConsoleDependencies, register_console_api
 from .auth_api import AuthDependencies, register_oidc_api
 from .dev_auth_api import DevAuthDependencies, register_dev_auth_api
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
@@ -65,6 +66,17 @@ def create_app(
             engine=dependencies.engine,
             redis_client=auth_redis,
             browser_sessions=dependencies.browser_sessions,
+        ),
+    )
+    register_console_api(
+        app,
+        ConsoleDependencies(
+            settings=resolved,
+            engine=dependencies.engine,
+            redis_client=auth_redis,
+            browser_sessions=dependencies.browser_sessions,
+            rate_limiter=dependencies.rate_limiter,
+            allowed_origins=dependencies.allowed_origins,
         ),
     )
 

@@ -85,6 +85,7 @@ def test_dev_session_issues_a_cookie_that_can_create_a_real_sales_session(
     # A second bootstrap call must not fail even though the demo tenant row already exists.
     second_bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
     assert second_bootstrap.status_code == 200
+    csrf_token = second_bootstrap.get_json()["csrf_token"]
 
     created = client.post(
         "/api/v1/sessions",
@@ -119,3 +120,40 @@ def test_dev_session_logout_requires_csrf_and_revokes_cookie(
     )
     assert signed_out.status_code == 200
     assert client.get("/api/v1/auth/session").status_code == 401
+
+
+@pytest.mark.integration
+def test_operator_console_lists_sessions_and_requests_idempotent_handoff(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    _, _, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    created = client.post(
+        "/api/v1/sessions",
+        json={"locale": "en-US", "timezone": "UTC"},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token, "Idempotency-Key": "console-session-create-00000001"},
+    )
+    session = created.get_json()
+    listing = client.get("/api/v1/console/sessions?limit=10")
+    assert listing.status_code == 200
+    assert any(item["session_id"] == session["session_id"] for item in listing.get_json()["items"])
+    details = client.get(f"/api/v1/console/sessions/{session['session_id']}")
+    assert details.status_code == 200
+    assert details.get_json()["transcript"] == []
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf_token, "Idempotency-Key": "console-handoff-00000000001"}
+    first = client.post(
+        f"/api/v1/console/sessions/{session['session_id']}/handoff",
+        json={"reason": "Customer requested a person", "priority": "HIGH", "expected_session_version": session["version"]},
+        headers=headers,
+    )
+    assert first.status_code == 202
+    assert first.get_json()["status"] == "requested"
+    replay = client.post(
+        f"/api/v1/console/sessions/{session['session_id']}/handoff",
+        json={"reason": "Customer requested a person", "priority": "HIGH", "expected_session_version": session["version"]},
+        headers=headers,
+    )
+    assert replay.status_code == 200
+    assert replay.get_json()["id"] == first.get_json()["id"]

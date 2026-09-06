@@ -10,7 +10,10 @@ import redis
 from flask import Flask, Response, jsonify, request
 from flask.typing import ResponseReturnValue
 
+from knotic_config import RuntimeEnvironment
+
 from .config import BackendSettings, load_backend_settings
+from .dev_auth_api import DevAuthDependencies, register_dev_auth_api
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 from .observability import StateDataObservability
 from .privacy_logging import install_sensitive_data_filter
@@ -46,6 +49,17 @@ def create_app(
         allowed_origins=resolved.allowed_origins,
     )
     register_lifecycle_api(app, dependencies)
+
+    if resolved.environment in {RuntimeEnvironment.DEVELOPMENT, RuntimeEnvironment.TEST}:
+        register_dev_auth_api(
+            app,
+            DevAuthDependencies(
+                engine=dependencies.engine,
+                browser_sessions=dependencies.browser_sessions,
+                allowed_origins=dependencies.allowed_origins,
+                cookie_secure=False,
+            ),
+        )
 
     voice_telemetry = VoiceObservability(
         service_name=resolved.service_name,

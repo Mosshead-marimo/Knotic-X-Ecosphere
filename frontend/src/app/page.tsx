@@ -1,4 +1,7 @@
-import { ArrowRight, Database, Link2, Mic, PhoneCall, Users, Zap } from "lucide-react";
+import { ArrowRight, Database, Link2, Mic, Users, Zap } from "lucide-react";
+import { StartDemoCallButton } from "../features/voice/StartDemoCallButton";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_KNOTIC_API_BASE_URL ?? "";
 
 const NAV_LINKS = [
   { href: "#features", label: "Features" },
@@ -81,12 +84,12 @@ export default function HomePage() {
             >
               Log in
             </a>
-            <a
-              href="#demo"
-              className="rounded-lg bg-brand-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:brightness-110"
+            <StartDemoCallButton
+              apiBaseUrl={API_BASE_URL}
+              className="rounded-lg bg-brand-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Talk to the demo
-            </a>
+            </StartDemoCallButton>
           </div>
         </div>
       </nav>
@@ -107,13 +110,12 @@ export default function HomePage() {
                 your own data, and books meetings on your team&apos;s calendars.
               </p>
               <div className="flex flex-col gap-4 sm:flex-row">
-                <a
-                  href="#demo-call"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-8 py-4 text-lg font-semibold text-white transition-all hover:-translate-y-0.5 hover:shadow-xl"
+                <StartDemoCallButton
+                  apiBaseUrl={API_BASE_URL}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-8 py-4 text-lg font-semibold text-white transition-all hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <PhoneCall className="h-5 w-5" aria-hidden="true" />
                   Start a demo call
-                </a>
+                </StartDemoCallButton>
                 <a
                   href="#learn-more"
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-border bg-white px-8 py-4 text-lg font-semibold text-black transition-colors hover:bg-brand-surface"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
 
@@ -179,3 +180,55 @@ def test_operator_console_lists_sessions_and_requests_idempotent_handoff(
     assert b"event: ready" in next(chunks)
     assert b"event: session.changed" in next(chunks)
     stream.close()
+
+
+@pytest.mark.integration
+def test_knowledge_upload_validation_queue_and_tombstone(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    _, _, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    headers = {
+        "Origin": ORIGIN,
+        "X-CSRF-Token": csrf_token,
+        "Idempotency-Key": "knowledge-upload-000000000001",
+    }
+    rejected = client.post(
+        "/api/v1/console/knowledge/documents",
+        data={"file": (io.BytesIO(b"binary"), "unsafe.pdf", "application/pdf"), "domain": "sales"},
+        headers=headers,
+    )
+    assert rejected.status_code == 415
+
+    uploaded = client.post(
+        "/api/v1/console/knowledge/documents",
+        data={
+            "file": (io.BytesIO(b"Approved pricing guidance"), "pricing.md", "text/markdown"),
+            "domain": "sales",
+        },
+        headers=headers,
+    )
+    assert uploaded.status_code == 202
+    document_id = uploaded.get_json()["id"]
+    assert uploaded.get_json()["status"] == "queued"
+    listing = client.get("/api/v1/console/knowledge/documents")
+    assert listing.status_code == 200
+    assert any(
+        item["id"] == document_id and item["status"] == "PENDING_INDEX"
+        for item in listing.get_json()["items"]
+    )
+
+    deactivated = client.post(
+        f"/api/v1/console/knowledge/documents/{document_id}/deactivate",
+        headers={**headers, "Idempotency-Key": "knowledge-deactivate-0000001"},
+    )
+    assert deactivated.status_code == 200
+    assert deactivated.get_json()["status"] == "confirmed"
+    reindexed = client.post(
+        f"/api/v1/console/knowledge/documents/{document_id}/reindex",
+        headers={**headers, "Idempotency-Key": "knowledge-reindex-0000000001"},
+    )
+    assert reindexed.status_code == 202
+    assert reindexed.get_json()["status"] == "queued"

@@ -39,7 +39,7 @@ def test_managed_agent_uses_agora_asr_openai_tts_and_private_llm() -> None:
             app_id="0123456789abcdef0123456789abcdef",
             app_certificate="b" * 32,
             customer_id="customer-id",
-            customer_secret="customer-secret",
+            customer_secret="customer-secret",  # noqa: S106 - isolated provider test fixture
             openai_api_key="openai-secret-value",
             llm_url="https://api.example.test/api/v1/internal/voice/chat/completions",
             llm_api_key="internal-agent-secret",

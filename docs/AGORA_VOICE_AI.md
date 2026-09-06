@@ -1,5 +1,7 @@
 # Agora Voice AI Guide
 
+> Current architecture (ADR-011): Agora Conversational AI Engine is the managed realtime media plane. The browser publishes and subscribes through Agora RTC; Flask controls managed-agent lifecycle and remains the only bridge to the private LangGraph/MCP business authority. The earlier self-hosted media-worker design is retired.
+
 This guide translates the shared Agora session resources into a safe implementation path for Knotic. It is supporting guidance; the binding requirements and architecture remain in [`REQUIREMENTS.md`](REQUIREMENTS.md), [`System_Design.md`](System_Design.md), and [`ARCHITECTURE_DECISIONS.md`](ARCHITECTURE_DECISIONS.md).
 
 ## Pipeline used by Knotic

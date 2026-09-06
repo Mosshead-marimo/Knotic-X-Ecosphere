@@ -694,6 +694,42 @@
     "schemas": {
       "Uuid": {"type": "string", "format": "uuid"},
       "Timestamp": {"type": "string", "format": "date-time"},
+      "OperatorActionState": {"type": "string", "enum": ["confirmed", "requested", "queued", "pending", "failed"]},
+      "ConsoleSessionSummary": {
+        "type": "object", "additionalProperties": false,
+        "required": ["session_id", "version", "status", "customer", "buying_stage", "qualification_score", "updated_at"],
+        "properties": {
+          "session_id": {"$ref": "#/components/schemas/Uuid"}, "version": {"type": "integer", "minimum": 1},
+          "status": {"type": "string", "enum": ["CREATED", "ACTIVE", "ENDING", "ENDED", "FAILED"]},
+          "customer": {"type": "object", "additionalProperties": false, "required": ["name", "company"], "properties": {"name": {"type": "string"}, "company": {"type": ["string", "null"]}}},
+          "current_intent": {"type": ["string", "null"]}, "buying_stage": {"type": "string"},
+          "qualification_score": {"type": "integer", "minimum": 0, "maximum": 100},
+          "next_best_action": {"type": ["string", "null"]}, "outcome": {"type": ["string", "null"]},
+          "started_at": {"anyOf": [{"$ref": "#/components/schemas/Timestamp"}, {"type": "null"}]},
+          "updated_at": {"$ref": "#/components/schemas/Timestamp"},
+          "ended_at": {"anyOf": [{"$ref": "#/components/schemas/Timestamp"}, {"type": "null"}]}
+        }
+      },
+      "ConsoleSessionPage": {
+        "type": "object", "additionalProperties": false, "required": ["items", "next_cursor", "has_more"],
+        "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/ConsoleSessionSummary"}}, "next_cursor": {"type": ["string", "null"]}, "has_more": {"type": "boolean"}}
+      },
+      "KnowledgeDocument": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "title", "domain", "classification", "document_version", "status", "source_uri", "created_at", "updated_at"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/Uuid"}, "title": {"type": "string"}, "domain": {"type": "string"},
+          "classification": {"type": "string"}, "document_version": {"type": "integer", "minimum": 1},
+          "status": {"type": "string", "enum": ["PENDING_INDEX", "ACTIVE", "INACTIVE", "INDEX_FAILED"]},
+          "source_uri": {"type": "string"}, "effective_at": {"anyOf": [{"$ref": "#/components/schemas/Timestamp"}, {"type": "null"}]},
+          "expires_at": {"anyOf": [{"$ref": "#/components/schemas/Timestamp"}, {"type": "null"}]},
+          "created_at": {"$ref": "#/components/schemas/Timestamp"}, "updated_at": {"$ref": "#/components/schemas/Timestamp"}
+        }
+      },
+      "ManagedAgentState": {
+        "type": "object", "additionalProperties": false, "required": ["agent_id", "agent_uid", "channel", "status", "duplicate"],
+        "properties": {"agent_id": {"type": "string"}, "agent_uid": {"type": "integer", "minimum": 1}, "channel": {"type": "string"}, "status": {"type": "string", "const": "confirmed"}, "duplicate": {"type": "boolean"}}
+      },
       "Liveness": {
         "type": "object",
         "additionalProperties": false,

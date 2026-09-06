@@ -828,3 +828,11 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - If work from a later phase is implemented early, log it under its actual phase rather than the current phase.
 - Record verified behavior, not planned or assumed behavior, in the change log.
 - Do not use this file to silently change requirements or architecture.
+
+### 2026-09-06 — Connected the VoxSales operator console to live service boundaries
+
+- Scope: production frontend delivery on `feature/operator-console-live`, stacked on `feature/voxsales-control-center`.
+- Commits: `73089e5` auth/gateway; `adfb221` console projections; `a73e483` realtime stream; `40fdc34` protected routes; `0a67c7c` knowledge administration; `532616d` managed voice; `fe2288d` acceptance coverage.
+- Files: OIDC/browser-session APIs and migration; Next.js same-origin gateway; console projection/SSE/relay services; protected console routes and shared provider; knowledge upload/queue/tombstone UI and API; Agora managed-agent adapter and call client; configuration, tests, and architecture/API/operations documentation.
+- Verified: frontend ESLint and TypeScript passed with Node `24.19.0`; Next.js `16.3.1` production webpack build passed and generated all console/call/gateway routes; focused managed-agent/config suite `8 passed`; PostgreSQL/Redis console, SSE, knowledge, and voice integration suite `10 passed`; full backend suite completed without failures with integration-only cases skipped when service URLs were absent.
+- Truthful release status: local implementation and mocked provider boundary are verified. Production readiness is not claimed until an HTTPS OIDC staging configuration, the private OpenAI-compatible LangGraph streaming endpoint, authenticated/deduplicated Agora callbacks, inactivity/orphan cleanup, a real Agora/OpenAI staging call, quota/data-region approval, accessibility scan, and signed browser/device matrix pass. Those are external or remaining implementation gates, not successful states.

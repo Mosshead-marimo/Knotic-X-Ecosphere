@@ -40,10 +40,14 @@ Never reuse staging or production secrets across environments. Each environment 
 | `KNOTIC_MCP_AUTH_TOKEN` | Secret | Backend, MCP | Always |
 | `KNOTIC_MCP_AUTH_TOKEN_PREVIOUS` | Secret | Backend, MCP | Only during rotation |
 | `KNOTIC_AGORA_APP_CERTIFICATE` | Secret | Backend | Always |
+| `KNOTIC_AGORA_CUSTOMER_ID`, `KNOTIC_AGORA_CUSTOMER_SECRET` | Secret | Backend managed-agent adapter | Staging/production |
+| `KNOTIC_AGORA_AGENT_API_URL` | Non-secret HTTPS URL | Backend managed-agent adapter | Default exists |
+| `KNOTIC_AGORA_LLM_URL` | Non-secret private HTTPS URL | Agora managed agent | Staging/production |
+| `KNOTIC_AGORA_LLM_API_KEY` | Secret | Agora to private Flask boundary | Staging/production |
 | `KNOTIC_SESSION_SECURITY_KEY` | Secret | Backend | Always |
 | `KNOTIC_METRICS_AUTH_TOKEN` | Secret | Backend | Staging/production |
 | `KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT` | Non-secret URL | Backend | Staging/production |
-| `KNOTIC_OPENAI_API_KEY` | Secret | Backend workflow adapter | When model-backed workflow is enabled |
+| `KNOTIC_OPENAI_API_KEY` | Secret | Backend workflow and managed OpenAI TTS | Staging/production |
 | `KNOTIC_OPENAI_MODEL`, `KNOTIC_OPENAI_TIMEOUT_SECONDS` | Non-secret | Backend workflow adapter | Defaults exist |
 
 No server-only variable may use a `NEXT_PUBLIC_` prefix or appear in frontend source, assets, generated bundles, browser logs, or client error payloads.

@@ -79,6 +79,18 @@ export interface SystemStatus {
   schema_revision: string;
 }
 
+export interface KnowledgeDocument {
+  id: string;
+  title: string;
+  domain: string;
+  classification: string;
+  document_version: number;
+  status: "PENDING_INDEX" | "ACTIVE" | "INACTIVE" | "INDEX_FAILED";
+  source_uri: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ApiProblemBody {
   error?: { code?: string; message?: string };
 }

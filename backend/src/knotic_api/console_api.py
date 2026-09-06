@@ -6,6 +6,7 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -37,6 +38,10 @@ from knotic_api.security import (
 
 _OPERATOR_ROLES = frozenset({"ADMIN", "SUPERVISOR", "SALES_REP"})
 _ADMIN_ROLES = frozenset({"ADMIN", "SUPERVISOR"})
+_KNOWLEDGE_TYPES = frozenset({"text/plain", "text/markdown", "text/x-markdown"})
+_KNOWLEDGE_EXTENSIONS = frozenset({".txt", ".md"})
+_SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._ -]+")
+_MAX_KNOWLEDGE_BYTES = 5_000_000
 
 
 class HandoffRequest(BaseModel):
@@ -105,6 +110,24 @@ class ConsoleApi:
             "/api/v1/console/pending-work/<work_id>/retry",
             endpoint="console_retry_work",
             view_func=self.retry_work,
+            methods=["POST"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/knowledge/documents",
+            endpoint="console_knowledge_documents",
+            view_func=self.knowledge_documents,
+            methods=["GET", "POST"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/knowledge/documents/<document_id>/deactivate",
+            endpoint="console_knowledge_deactivate",
+            view_func=self.deactivate_knowledge_document,
+            methods=["POST"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/knowledge/documents/<document_id>/reindex",
+            endpoint="console_knowledge_reindex",
+            view_func=self.reindex_knowledge_document,
             methods=["POST"],
         )
 
@@ -471,6 +494,167 @@ class ConsoleApi:
             return jsonify(id=str(row["id"]), status="queued", updated_at=self._timestamp(row["updated_at"])), 202
         except ConsoleProblem as problem:
             return self._problem(problem)
+
+    def knowledge_documents(self) -> ResponseReturnValue:
+        try:
+            if request.method == "POST":
+                return self._upload_knowledge_document()
+            actor, _ = self._authorize(action="console-knowledge-read", roles=_ADMIN_ROLES)
+            with self._connection(actor) as connection:
+                rows = list(
+                    connection.execute(
+                        sa.text(
+                            "select id,title,domain,classification,document_version,status,source_uri,"
+                            "effective_at,expires_at,created_at,updated_at from knowledge_documents "
+                            "where tenant_id=:tenant_id order by updated_at desc,id desc limit 200"
+                        ),
+                        {"tenant_id": actor.tenant_id},
+                    ).mappings()
+                )
+            return jsonify(items=[self._json_row(row) for row in rows])
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Knowledge data is unavailable."))
+
+    def _upload_knowledge_document(self) -> ResponseReturnValue:
+        actor, _ = self._authorize(action="console-knowledge-upload", mutation=True, roles=_ADMIN_ROLES)
+        self._idempotency_header()
+        upload = request.files.get("file")
+        if upload is None or not upload.filename:
+            raise ConsoleProblem(422, "VALIDATION_FAILED", "A document file is required.")
+        filename = _SAFE_FILENAME.sub("_", upload.filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]).strip(" .")
+        extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        content_type = (upload.mimetype or "").lower()
+        if extension not in _KNOWLEDGE_EXTENSIONS or content_type not in _KNOWLEDGE_TYPES:
+            raise ConsoleProblem(415, "UNSUPPORTED_DOCUMENT", "Only UTF-8 TXT and Markdown documents are accepted.")
+        body = upload.stream.read(_MAX_KNOWLEDGE_BYTES + 1)
+        if len(body) > _MAX_KNOWLEDGE_BYTES:
+            raise ConsoleProblem(413, "DOCUMENT_TOO_LARGE", "Documents may not exceed 5 MB.")
+        try:
+            text = body.decode("utf-8", errors="strict").replace("\x00", "").strip()
+        except UnicodeDecodeError as error:
+            raise ConsoleProblem(422, "INVALID_ENCODING", "The document must be valid UTF-8.") from error
+        if not text:
+            raise ConsoleProblem(422, "EMPTY_DOCUMENT", "The document has no indexable content.")
+        digest = hashlib.sha256(text.encode()).digest()
+        document_id, work_id, now = new_uuid7(), new_uuid7(), datetime.now(UTC)
+        domain = request.form.get("domain", "sales").strip().lower()
+        if not re.fullmatch(r"[a-z][a-z0-9_-]{1,63}", domain):
+            raise ConsoleProblem(422, "VALIDATION_FAILED", "Knowledge domain is invalid.")
+        chunks = self._knowledge_chunks(text)
+        with self._connection(actor) as connection:
+            version = int(
+                connection.execute(
+                    sa.text(
+                        "select coalesce(max(document_version),0)+1 from knowledge_documents "
+                        "where tenant_id=:tenant_id and source_hash=:source_hash"
+                    ),
+                    {"tenant_id": actor.tenant_id, "source_hash": digest},
+                ).scalar_one()
+            )
+            connection.execute(
+                sa.text(
+                    "insert into knowledge_documents "
+                    "(id,tenant_id,source_uri,source_hash,domain,title,classification,document_version,status) "
+                    "values (:id,:tenant_id,:source_uri,:source_hash,:domain,:title,'INTERNAL',"
+                    ":version,'PENDING_INDEX')"
+                ),
+                {
+                    "id": document_id,
+                    "tenant_id": actor.tenant_id,
+                    "source_uri": f"admin-upload://{filename}",
+                    "source_hash": digest,
+                    "domain": domain,
+                    "title": filename,
+                    "version": version,
+                },
+            )
+            for ordinal, chunk in enumerate(chunks):
+                connection.execute(
+                    sa.text(
+                        "insert into knowledge_chunks "
+                        "(id,tenant_id,document_id,document_version,ordinal,approved_text,token_count,"
+                        "metadata,content_hash) values (:id,:tenant_id,:document_id,:version,:ordinal,"
+                        ":text,:tokens,cast(:metadata as jsonb),:hash)"
+                    ),
+                    {
+                        "id": new_uuid7(), "tenant_id": actor.tenant_id, "document_id": document_id,
+                        "version": version, "ordinal": ordinal, "text": chunk,
+                        "tokens": max(1, len(chunk.split())), "metadata": json.dumps({"filename": filename}),
+                        "hash": hashlib.sha256(chunk.encode()).digest(),
+                    },
+                )
+            self._queue_knowledge_work(connection, actor, document_id, work_id, "KNOWLEDGE_INDEX", now)
+        return jsonify(id=str(document_id), status="queued", indexing_status="pending", version=version), 202
+
+    def deactivate_knowledge_document(self, document_id: str) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-knowledge-deactivate", mutation=True, roles=_ADMIN_ROLES)
+            self._idempotency_header()
+            parsed = self._uuid7(document_id)
+            with self._connection(actor) as connection:
+                row = connection.execute(
+                    sa.text(
+                        "update knowledge_documents set status='INACTIVE',updated_at=timezone('utc',now()) "
+                        "where tenant_id=:tenant_id and id=:id and status!='INACTIVE' returning id,status,updated_at"
+                    ), {"tenant_id": actor.tenant_id, "id": parsed}
+                ).mappings().one_or_none()
+            if row is None:
+                raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Active document was not found.")
+            return jsonify(id=str(row["id"]), status="confirmed", document_status="inactive"), 200
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+
+    def reindex_knowledge_document(self, document_id: str) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-knowledge-reindex", mutation=True, roles=_ADMIN_ROLES)
+            self._idempotency_header()
+            parsed, work_id, now = self._uuid7(document_id), new_uuid7(), datetime.now(UTC)
+            with self._connection(actor) as connection:
+                row = connection.execute(
+                    sa.text(
+                        "update knowledge_documents set status='PENDING_INDEX',updated_at=:at "
+                        "where tenant_id=:tenant_id and id=:id returning id"
+                    ), {"tenant_id": actor.tenant_id, "id": parsed, "at": now}
+                ).one_or_none()
+                if row is None:
+                    raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Document was not found.")
+                self._queue_knowledge_work(connection, actor, parsed, work_id, "KNOWLEDGE_REINDEX", now)
+            return jsonify(id=str(parsed), status="queued", indexing_status="pending"), 202
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+
+    def _queue_knowledge_work(
+        self, connection: Connection, actor: AuthenticatedActor, document_id: UUID, work_id: UUID,
+        action: str, now: datetime
+    ) -> None:
+        payload = self._field_cipher.encrypt(
+            json.dumps({"document_id": str(document_id), "action": action}),
+            tenant_id=actor.tenant_id, aggregate_id=work_id, field="provider_payload"
+        )
+        connection.execute(
+            sa.text(
+                "insert into pending_provider_updates "
+                "(id,tenant_id,provider,action,aggregate_type,aggregate_id,payload_ciphertext,status,next_attempt_at) "
+                "values (:id,:tenant_id,'MCP_KNOWLEDGE',:action,'KNOWLEDGE_DOCUMENT',"
+                ":document_id,:payload,'PENDING',:at)"
+            ), {"id": work_id, "tenant_id": actor.tenant_id, "action": action,
+                 "document_id": document_id, "payload": payload, "at": now}
+        )
+
+    @staticmethod
+    def _knowledge_chunks(text: str, limit: int = 900) -> list[str]:
+        chunks: list[str] = []
+        current: list[str] = []
+        for word in text.split():
+            if current and len(" ".join((*current, word))) > limit:
+                chunks.append(" ".join(current))
+                current = []
+            current.append(word)
+        if current:
+            chunks.append(" ".join(current))
+        return chunks
 
     def _authorize(
         self, *, action: str, mutation: bool = False, roles: frozenset[str] = _OPERATOR_ROLES

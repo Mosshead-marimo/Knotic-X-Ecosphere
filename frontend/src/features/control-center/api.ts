@@ -3,6 +3,7 @@ import type {
   ApiProblemBody,
   BrowserSession,
   IntegrationStatus,
+  KnowledgeDocument,
   SessionDetail,
   SessionPage,
   SystemStatus,
@@ -40,6 +41,31 @@ export const consoleApi = {
   analytics: (days: number) => request<Analytics>(`/console/analytics?days=${days}`),
   integrations: () => request<IntegrationStatus>("/console/integrations"),
   system: () => request<SystemStatus>("/console/system"),
+  knowledge: () => request<{ items: KnowledgeDocument[] }>("/console/knowledge/documents"),
+  uploadKnowledge: (session: BrowserSession, file: File, domain: string) => {
+    const body = new FormData();
+    body.set("file", file);
+    body.set("domain", domain);
+    return request<{ id: string; status: string; indexing_status: string }>("/console/knowledge/documents", {
+      method: "POST",
+      headers: {
+        "X-CSRF-Token": session.csrf_token,
+        "Idempotency-Key": crypto.randomUUID().replaceAll("-", "") + Date.now(),
+      },
+      body,
+    });
+  },
+  knowledgeAction: (session: BrowserSession, id: string, action: "deactivate" | "reindex") =>
+    request<{ id: string; status: string }>(
+      `/console/knowledge/documents/${encodeURIComponent(id)}/${action}`,
+      {
+        method: "POST",
+        headers: {
+          "X-CSRF-Token": session.csrf_token,
+          "Idempotency-Key": crypto.randomUUID().replaceAll("-", "") + Date.now(),
+        },
+      },
+    ),
   handoff: (session: BrowserSession, id: string, version: number, reason: string, priority: string) =>
     request<{ id: string; status: string }>(`/console/sessions/${encodeURIComponent(id)}/handoff`, {
       method: "POST",

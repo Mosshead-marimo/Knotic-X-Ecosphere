@@ -579,9 +579,14 @@ class ConsoleApi:
                         ":text,:tokens,cast(:metadata as jsonb),:hash)"
                     ),
                     {
-                        "id": new_uuid7(), "tenant_id": actor.tenant_id, "document_id": document_id,
-                        "version": version, "ordinal": ordinal, "text": chunk,
-                        "tokens": max(1, len(chunk.split())), "metadata": json.dumps({"filename": filename}),
+                        "id": new_uuid7(),
+                        "tenant_id": actor.tenant_id,
+                        "document_id": document_id,
+                        "version": version,
+                        "ordinal": ordinal,
+                        "text": chunk,
+                        "tokens": max(1, len(chunk.split())),
+                        "metadata": json.dumps({"filename": filename}),
                         "hash": hashlib.sha256(chunk.encode()).digest(),
                     },
                 )
@@ -594,12 +599,18 @@ class ConsoleApi:
             self._idempotency_header()
             parsed = self._uuid7(document_id)
             with self._connection(actor) as connection:
-                row = connection.execute(
-                    sa.text(
-                        "update knowledge_documents set status='INACTIVE',updated_at=timezone('utc',now()) "
-                        "where tenant_id=:tenant_id and id=:id and status!='INACTIVE' returning id,status,updated_at"
-                    ), {"tenant_id": actor.tenant_id, "id": parsed}
-                ).mappings().one_or_none()
+                row = (
+                    connection.execute(
+                        sa.text(
+                            "update knowledge_documents set status='INACTIVE',updated_at=timezone('utc',now()) "
+                            "where tenant_id=:tenant_id and id=:id and status!='INACTIVE' "
+                            "returning id,status,updated_at"
+                        ),
+                        {"tenant_id": actor.tenant_id, "id": parsed},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
             if row is None:
                 raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Active document was not found.")
             return jsonify(id=str(row["id"]), status="confirmed", document_status="inactive"), 200
@@ -616,7 +627,8 @@ class ConsoleApi:
                     sa.text(
                         "update knowledge_documents set status='PENDING_INDEX',updated_at=:at "
                         "where tenant_id=:tenant_id and id=:id returning id"
-                    ), {"tenant_id": actor.tenant_id, "id": parsed, "at": now}
+                    ),
+                    {"tenant_id": actor.tenant_id, "id": parsed, "at": now},
                 ).one_or_none()
                 if row is None:
                     raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Document was not found.")
@@ -626,12 +638,19 @@ class ConsoleApi:
             return self._problem(problem)
 
     def _queue_knowledge_work(
-        self, connection: Connection, actor: AuthenticatedActor, document_id: UUID, work_id: UUID,
-        action: str, now: datetime
+        self,
+        connection: Connection,
+        actor: AuthenticatedActor,
+        document_id: UUID,
+        work_id: UUID,
+        action: str,
+        now: datetime,
     ) -> None:
         payload = self._field_cipher.encrypt(
             json.dumps({"document_id": str(document_id), "action": action}),
-            tenant_id=actor.tenant_id, aggregate_id=work_id, field="provider_payload"
+            tenant_id=actor.tenant_id,
+            aggregate_id=work_id,
+            field="provider_payload",
         )
         connection.execute(
             sa.text(
@@ -639,8 +658,15 @@ class ConsoleApi:
                 "(id,tenant_id,provider,action,aggregate_type,aggregate_id,payload_ciphertext,status,next_attempt_at) "
                 "values (:id,:tenant_id,'MCP_KNOWLEDGE',:action,'KNOWLEDGE_DOCUMENT',"
                 ":document_id,:payload,'PENDING',:at)"
-            ), {"id": work_id, "tenant_id": actor.tenant_id, "action": action,
-                 "document_id": document_id, "payload": payload, "at": now}
+            ),
+            {
+                "id": work_id,
+                "tenant_id": actor.tenant_id,
+                "action": action,
+                "document_id": document_id,
+                "payload": payload,
+                "at": now,
+            },
         )
 
     @staticmethod

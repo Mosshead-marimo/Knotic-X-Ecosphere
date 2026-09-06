@@ -215,10 +215,7 @@ def test_knowledge_upload_validation_queue_and_tombstone(
     assert uploaded.get_json()["status"] == "queued"
     listing = client.get("/api/v1/console/knowledge/documents")
     assert listing.status_code == 200
-    assert any(
-        item["id"] == document_id and item["status"] == "PENDING_INDEX"
-        for item in listing.get_json()["items"]
-    )
+    assert any(item["id"] == document_id and item["status"] == "PENDING_INDEX" for item in listing.get_json()["items"])
 
     deactivated = client.post(
         f"/api/v1/console/knowledge/documents/{document_id}/deactivate",

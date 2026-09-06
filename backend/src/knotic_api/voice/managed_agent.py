@@ -47,8 +47,13 @@ class ManagedAgentService:
             return {**cached, "duplicate": True}
         configuration = self.configuration
         if not all(
-            (configuration.customer_id, configuration.customer_secret, configuration.openai_api_key,
-             configuration.llm_url, configuration.llm_api_key)
+            (
+                configuration.customer_id,
+                configuration.customer_secret,
+                configuration.openai_api_key,
+                configuration.llm_url,
+                configuration.llm_api_key,
+            )
         ):
             raise ManagedAgentUnavailable("Managed voice is not configured for this environment.")
         channel = channel_name_for(tenant_id=tenant_id, session_id=session_id)
@@ -94,8 +99,11 @@ class ManagedAgentService:
         if not isinstance(agent_id, str) or not agent_id:
             raise ManagedAgentUnavailable("Agora did not confirm an agent identifier.")
         result: dict[str, object] = {
-            "agent_id": agent_id, "agent_uid": agent_uid, "channel": channel,
-            "status": "confirmed", "duplicate": False,
+            "agent_id": agent_id,
+            "agent_uid": agent_uid,
+            "channel": channel,
+            "status": "confirmed",
+            "duplicate": False,
         }
         try:
             self.store.set(self._key(tenant_id, session_id), json.dumps(result).encode(), ex=3900)
@@ -118,12 +126,11 @@ class ManagedAgentService:
 
     def _request(self, method: str, path: str, payload: Mapping[str, object]) -> dict[str, object]:
         configuration = self.configuration
-        credentials = base64.b64encode(
-            f"{configuration.customer_id}:{configuration.customer_secret}".encode()
-        ).decode()
+        credentials = base64.b64encode(f"{configuration.customer_id}:{configuration.customer_secret}".encode()).decode()
         request = Request(  # noqa: S310 - configuration validation restricts this to HTTP(S)
             f"{configuration.api_base_url.rstrip('/')}/{path}",
-            data=json.dumps(payload).encode(), method=method,
+            data=json.dumps(payload).encode(),
+            method=method,
             headers={"Authorization": f"Basic {credentials}", "Content-Type": "application/json"},
         )
         try:

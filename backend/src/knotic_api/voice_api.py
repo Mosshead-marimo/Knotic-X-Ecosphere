@@ -102,32 +102,30 @@ class VoiceApi:
         self.app.add_url_rule(
             "/api/v1/sessions/<session_id>/voice/consent", view_func=self.grant_consent, methods=["POST"]
         )
-        self.app.add_url_rule(
-            "/api/v1/sessions/<session_id>/voice/agent", view_func=self.start_agent, methods=["POST"]
-        )
+        self.app.add_url_rule("/api/v1/sessions/<session_id>/voice/agent", view_func=self.start_agent, methods=["POST"])
         self.app.add_url_rule(
             "/api/v1/sessions/<session_id>/voice/agent", view_func=self.stop_agent, methods=["DELETE"]
         )
 
     def start_agent(self, session_id: str) -> ResponseReturnValue:
         try:
-            actor, _, parsed_session_id, rate_limit = self._authorize(
-                session_id, action="voice-agent-start"
-            )
+            actor, _, parsed_session_id, rate_limit = self._authorize(session_id, action="voice-agent-start")
             self._require_idempotency_key()
             service = self.dependencies.managed_agents
             if service is None:
                 raise VoiceApiProblem(
-                    status=503, code="VOICE_AGENT_NOT_CONFIGURED",
-                    message="The managed voice agent is not configured for this environment."
+                    status=503,
+                    code="VOICE_AGENT_NOT_CONFIGURED",
+                    message="The managed voice agent is not configured for this environment.",
                 )
             issued = self.dependencies.token_service.issue(
-                tenant_id=actor.tenant_id, actor_id=actor.actor_id,
-                session_id=parsed_session_id, role="PUBLISHER", now=datetime.now(UTC)
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                session_id=parsed_session_id,
+                role="PUBLISHER",
+                now=datetime.now(UTC),
             )
-            result = service.start(
-                tenant_id=actor.tenant_id, session_id=parsed_session_id, customer_uid=issued.uid
-            )
+            result = service.start(tenant_id=actor.tenant_id, session_id=parsed_session_id, customer_uid=issued.uid)
             response = jsonify(result)
             self._rate_limit_headers(response, rate_limit)
             return response
@@ -136,8 +134,9 @@ class VoiceApi:
         except ManagedAgentUnavailable:
             return self._problem(
                 VoiceApiProblem(
-                    status=503, code="VOICE_AGENT_UNAVAILABLE",
-                    message="The managed voice agent could not be confirmed."
+                    status=503,
+                    code="VOICE_AGENT_UNAVAILABLE",
+                    message="The managed voice agent could not be confirmed.",
                 )
             )
 
@@ -150,8 +149,9 @@ class VoiceApi:
             service = self.dependencies.managed_agents
             if service is None:
                 raise VoiceApiProblem(
-                    status=503, code="VOICE_AGENT_NOT_CONFIGURED",
-                    message="The managed voice agent is not configured for this environment."
+                    status=503,
+                    code="VOICE_AGENT_NOT_CONFIGURED",
+                    message="The managed voice agent is not configured for this environment.",
                 )
             result = service.stop(tenant_id=actor.tenant_id, session_id=parsed_session_id)
             response = jsonify(result)
@@ -162,8 +162,9 @@ class VoiceApi:
         except ManagedAgentUnavailable:
             return self._problem(
                 VoiceApiProblem(
-                    status=503, code="VOICE_AGENT_UNAVAILABLE",
-                    message="The managed voice agent stop was not confirmed."
+                    status=503,
+                    code="VOICE_AGENT_UNAVAILABLE",
+                    message="The managed voice agent stop was not confirmed.",
                 )
             )
 
@@ -456,8 +457,7 @@ class VoiceApi:
         value = request.headers.get("Idempotency-Key", "")
         if not 16 <= len(value) <= 128 or not value.isascii():
             raise VoiceApiProblem(
-                status=400, code="IDEMPOTENCY_KEY_REQUIRED",
-                message="A valid Idempotency-Key is required."
+                status=400, code="IDEMPOTENCY_KEY_REQUIRED", message="A valid Idempotency-Key is required."
             )
         return value
 

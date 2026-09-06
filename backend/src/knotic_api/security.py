@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import re
@@ -39,16 +40,21 @@ class AuthenticatedActor:
     tenant_id: UUID
     actor_id: UUID
     actor_type: Literal["CUSTOMER", "HUMAN_AGENT"] = "HUMAN_AGENT"
+    roles: tuple[Literal["ADMIN", "SUPERVISOR", "SALES_REP", "CUSTOMER"], ...] = ()
+    display_name: str = "Operator"
 
 
 class BrowserSessionValue(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     tenant_id: UUID
     actor_id: UUID
     actor_type: Literal["CUSTOMER", "HUMAN_AGENT"]
+    roles: tuple[Literal["ADMIN", "SUPERVISOR", "SALES_REP", "CUSTOMER"], ...] = ()
+    display_name: str = "Operator"
     csrf_hmac: str
+    csrf_ciphertext: str
     expires_at: AwareDatetime
 
     @field_validator("tenant_id", "actor_id")
@@ -69,6 +75,7 @@ class RedisBrowserSessionStore:
         self._environment = environment
         self._lookup_key = derive_key(master_key, b"browser-session-lookup")
         self._csrf_key = derive_key(master_key, b"browser-session-csrf")
+        self._csrf_cipher = ReplayCipher(derive_key(master_key, b"browser-session-csrf-envelope"))
 
     def put(
         self,
@@ -89,7 +96,12 @@ class RedisBrowserSessionStore:
             tenant_id=actor.tenant_id,
             actor_id=actor.actor_id,
             actor_type=actor.actor_type,
+            roles=actor.roles,
+            display_name=actor.display_name,
             csrf_hmac=self._token_hmac(self._csrf_key, csrf_token),
+            csrf_ciphertext=base64.urlsafe_b64encode(
+                self._csrf_cipher.encrypt(csrf_token.encode(), associated_data=self._key(cookie).encode())
+            ).decode(),
             expires_at=expires_at,
         )
         try:
@@ -124,9 +136,32 @@ class RedisBrowserSessionStore:
                 tenant_id=value.tenant_id,
                 actor_id=value.actor_id,
                 actor_type=value.actor_type,
+                roles=value.roles,
+                display_name=value.display_name,
             ),
             value,
         )
+
+    def revoke(self, cookie: str | None) -> None:
+        if cookie is None:
+            return
+        try:
+            self._validate_token(cookie, minimum=32, maximum=512)
+        except ValueError:
+            return
+        self._safe_delete(self._key(cookie))
+
+    def csrf_token(self, cookie: str | None, value: BrowserSessionValue) -> str:
+        if cookie is None:
+            raise SecurityDependencyUnavailable("browser session cookie is absent")
+        try:
+            ciphertext = base64.urlsafe_b64decode(value.csrf_ciphertext.encode())
+            token = self._csrf_cipher.decrypt(ciphertext, associated_data=self._key(cookie).encode()).decode()
+        except (ValueError, UnicodeDecodeError) as error:
+            raise SecurityDependencyUnavailable("browser session CSRF token is invalid") from error
+        if not self.verify_csrf(value, token):
+            raise SecurityDependencyUnavailable("browser session CSRF token failed integrity validation")
+        return token
 
     def verify_csrf(self, value: BrowserSessionValue, submitted_token: str | None) -> bool:
         if submitted_token is None:

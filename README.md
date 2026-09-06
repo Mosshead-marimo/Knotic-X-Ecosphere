@@ -34,7 +34,7 @@ docker compose up -d --build --wait --wait-timeout 180
 
 See `docs/DEPENDENCY_POLICY.md` for runtime pins, audits, and update rules, `docs/QUALITY_GATES.md` for local/CI enforcement, `docs/ARCHITECTURE_DECISIONS.md` for the binding production architecture, `docs/API_CONTRACTS.md` for versioned APIs, `docs/DATA_MODEL.md` for data ownership, and `docs/MCP_TOOLS.md` for governed tool contracts. P0-T009 and P0-T010 implementation is present; their external completion gates are recorded in the Phase 0 task file.
 
-Configuration and secret-handling behavior is documented in `docs/CONFIGURATION.md`. `.env.example` is a placeholder-only local template; services never load it implicitly.
+Configuration and secret-handling behavior is documented in `docs/CONFIGURATION.md`. The governed tenant MCP registration and activation procedure is documented in `docs/MCP_INTEGRATION_GUIDE.md`. `.env.example` is a placeholder-only local template; services never load it implicitly.
 
 Developer bootstrap, release, rollback, and incident procedures are in `docs/DEVELOPMENT.md`, `docs/RELEASE.md`, `docs/ROLLBACK.md`, and `docs/INCIDENT_RESPONSE.md`.
 

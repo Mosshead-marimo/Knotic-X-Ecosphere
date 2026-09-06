@@ -12,12 +12,16 @@ from flask.typing import ResponseReturnValue
 
 from knotic_config import RuntimeEnvironment
 
+from .auth_api import AuthDependencies, register_oidc_api
 from .config import BackendSettings, load_backend_settings
+from .console_api import ConsoleDependencies, register_console_api
 from .dev_auth_api import DevAuthDependencies, register_dev_auth_api
+from .event_stream import EventStreamDependencies, register_event_stream_api
 from .lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies, register_lifecycle_api
 from .observability import StateDataObservability
 from .privacy_logging import install_sensitive_data_filter
 from .voice.event_sync import PostgresVoiceEventStore, VoiceEventSynchronizer
+from .voice.managed_agent import ManagedAgentConfiguration, ManagedAgentService
 from .voice.privacy import PostgresVoiceConsentStore, VoicePrivacyService
 from .voice.recovery import PostgresRecoveryStore, VoiceRecoveryCoordinator
 from .voice.session_service import AgoraSessionTokenService, LoggingAgoraAuditSink, RedisAgoraSessionStore
@@ -49,6 +53,43 @@ def create_app(
         allowed_origins=resolved.allowed_origins,
     )
     register_lifecycle_api(app, dependencies)
+
+    auth_redis = redis.Redis.from_url(
+        resolved.redis_url.get_secret_value(),
+        decode_responses=False,
+        socket_connect_timeout=1,
+        socket_timeout=5,
+        health_check_interval=30,
+    )
+    register_oidc_api(
+        app,
+        AuthDependencies(
+            settings=resolved,
+            engine=dependencies.engine,
+            redis_client=auth_redis,
+            browser_sessions=dependencies.browser_sessions,
+        ),
+    )
+    register_console_api(
+        app,
+        ConsoleDependencies(
+            settings=resolved,
+            engine=dependencies.engine,
+            redis_client=auth_redis,
+            browser_sessions=dependencies.browser_sessions,
+            rate_limiter=dependencies.rate_limiter,
+            allowed_origins=dependencies.allowed_origins,
+        ),
+    )
+    register_event_stream_api(
+        app,
+        EventStreamDependencies(
+            engine=dependencies.engine,
+            redis_client=auth_redis,
+            browser_sessions=dependencies.browser_sessions,
+            environment=resolved.environment.value,
+        ),
+    )
 
     if resolved.environment in {RuntimeEnvironment.DEVELOPMENT, RuntimeEnvironment.TEST}:
         register_dev_auth_api(
@@ -98,6 +139,22 @@ def create_app(
             allowed_media_regions=frozenset(resolved.voice_media_regions),
         ),
         telemetry=voice_telemetry,
+        managed_agents=ManagedAgentService(
+            ManagedAgentConfiguration(
+                app_id=resolved.agora_app_id,
+                app_certificate=resolved.agora_app_certificate.get_secret_value(),
+                customer_id=resolved.agora_customer_id.get_secret_value() if resolved.agora_customer_id else None,
+                customer_secret=(
+                    resolved.agora_customer_secret.get_secret_value() if resolved.agora_customer_secret else None
+                ),
+                openai_api_key=resolved.openai_api_key.get_secret_value() if resolved.openai_api_key else None,
+                llm_url=resolved.agora_llm_url,
+                llm_api_key=resolved.agora_llm_api_key.get_secret_value() if resolved.agora_llm_api_key else None,
+                api_base_url=resolved.agora_agent_api_url,
+            ),
+            voice_redis,
+            environment=resolved.environment.value,
+        ),
     )
     register_voice_api(app, voice_dependencies)
     app.extensions["knotic_voice_recovery"] = VoiceRecoveryCoordinator(PostgresRecoveryStore(dependencies.engine))

@@ -20,12 +20,14 @@ dependencies = [
     "redis[hiredis]==8.1.0",
     "sqlalchemy==2.0.52",
     "openai==3.3.1",
+    "pyjwt[crypto]==2.13.0",
 ]
 
 [project.scripts]
 knotic-api = "knotic_api.__main__:main"
 knotic-evaluate = "knotic_api.workflow.evaluation:main"
 knotic-certify-voice = "knotic_api.voice.certification:main"
+knotic-event-relay = "knotic_api.event_relay_main:main"
 
 [build-system]
 requires = ["uv_build==0.12.5"]

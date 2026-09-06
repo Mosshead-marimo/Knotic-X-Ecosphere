@@ -18,12 +18,13 @@ Owners below are accountable engineering roles because named human and on-call o
 | ADR-002 | Deployment topology and network trust zones | ACCEPTED | Platform owner |
 | ADR-003 | Human, browser, workload, and resource identity | ACCEPTED | Security owner |
 | ADR-004 | Model, voice, embedding, and provider strategy | ACCEPTED | AI platform owner |
-| ADR-005 | Realtime voice path and interruption authority | ACCEPTED | Realtime voice owner |
+| ADR-005 | Realtime voice path and interruption authority | SUPERSEDED by ADR-011 | Realtime voice owner |
 | ADR-006 | State ownership and consistency model | ACCEPTED | Data platform owner |
 | ADR-007 | Failure, retry, and transactional truth strategy | ACCEPTED | Reliability owner |
 | ADR-008 | Secrets, rotation, and cryptographic boundaries | ACCEPTED | Security owner |
 | ADR-009 | Observability, audit, and data-minimization baseline | ACCEPTED | Observability owner |
 | ADR-010 | Contract evolution and provider replacement | ACCEPTED | Architecture owner |
+| ADR-011 | Agora-managed realtime media plane | ACCEPTED | Realtime voice owner |
 
 ---
 
@@ -44,7 +45,7 @@ Use the following authoritative boundaries:
 1. The Next.js frontend owns browser UI, device state, and the Agora Web SDK. It calls only versioned Flask APIs and Agora client APIs using short-lived credentials.
 2. Flask owns public application APIs, user/session authorization, Agora token issuance, session composition, and invocation of LangGraph.
 3. LangGraph modules inside the backend own adaptive sales decisions and typed state transitions. They are pure with respect to provider access and consume only validated repository or MCP results.
-4. A realtime voice worker is packaged from the backend codebase but runs as a separately scalable process. It bridges Agora media to the configured speech provider and Flask turn interface; it does not own sales policy, durable truth, or business tools.
+4. Agora Conversational AI is the managed realtime media plane. Flask controls agent lifecycle and exposes a private OpenAI-compatible LangGraph boundary; the managed agent does not own sales policy, durable truth, or business tools.
 5. The MCP service owns service authentication, authorization policy, schema validation, audit, knowledge access, and business-action adapters. Logical Sales, Knowledge, and Integration namespaces may share this one physical deployment until scaling or isolation evidence justifies a split.
 6. Redis and PostgreSQL are accessed through typed backend or MCP repositories. pgvector is a PostgreSQL capability accessed through the Knowledge MCP boundary. The LLM never receives arbitrary SQL or direct provider credentials.
 
@@ -56,7 +57,7 @@ Browser -> Flask API -> LangGraph -> typed MCP client -> MCP gateway -> provider
               |             +-> typed state repositories   +-> controlled repositories
               +-> Agora token service
 
-Agora RTC <-> realtime voice worker <-> Flask turn interface / speech provider
+Agora RTC <-> Agora managed agent <-> private Flask/LangGraph turn interface
 ```
 
 Synchronous reverse dependencies and direct browser-to-MCP/database/provider calls are prohibited. Cross-service calls use versioned contracts and correlation metadata.
@@ -64,7 +65,7 @@ Synchronous reverse dependencies and direct browser-to-MCP/database/provider cal
 ### Consequences
 
 - Components can scale and deploy independently while preserving one business-policy authority.
-- The voice worker adds a deployable process and an internal turn protocol that `P0-T005` must define.
+- Managed-agent lifecycle and callback authentication require versioned private contracts and provider smoke tests.
 - MCP adds a network hop, but centralizes policy, validation, timeout, and audit controls.
 - Repository interfaces and contract tests are required to prevent boundary erosion.
 
@@ -89,7 +90,7 @@ Local development needs a reproducible topology, while production needs independ
 
 ### Decision
 
-Deploy immutable, non-root OCI containers for four application processes: frontend, Flask API, realtime voice worker, and MCP gateway. Local and CI use Docker Compose. Production uses a managed container platform selected per environment without changing application contracts.
+Deploy immutable, non-root OCI containers for the frontend, Flask API/event delivery processes, and MCP gateway. Agora supplies the managed realtime media plane. Local and CI use Docker Compose. Production uses a managed container platform selected per environment without changing application contracts.
 
 - Only the frontend and Flask ingress are publicly reachable through TLS. The frontend may also establish its authenticated Agora RTC connection.
 - The MCP gateway, Redis, PostgreSQL/pgvector, metrics endpoints, and administrative interfaces remain on private networks.
@@ -105,7 +106,7 @@ The specific production cloud and regions are deployment parameters, not applica
 
 - The application remains portable and local development mirrors process boundaries.
 - Production deployment is blocked until `P0-T008` supplies and verifies the environment-specific platform profile.
-- A separate voice worker consumes additional operational capacity but isolates persistent media sessions from API autoscaling.
+- Agora media sessions scale independently from Flask request and SSE delivery processes.
 - Managed data services reduce operational risk but introduce provider cost and compatibility review.
 
 ### Rejected alternatives
@@ -208,7 +209,7 @@ These references establish capability, not account availability or production ap
 
 ## ADR-005 — Realtime voice path and interruption authority
 
-- **Status:** ACCEPTED
+- **Status:** SUPERSEDED by ADR-011
 - **Owner:** Realtime voice owner
 - **Date:** 2026-08-17
 
@@ -453,3 +454,25 @@ Frontend, Flask, voice workers, LangGraph, MCP, persistence, and providers will 
 - `P0-T008` must select and document the production platform profile, secret-manager adapter, managed data services, observability backend, network controls, and rollout/drain behavior.
 - `P0-T009` must enforce contract, architecture, dependency, secret, and security checks in CI.
 - Model/provider availability, regional processing, account limits, and data terms remain deployment approval checks; this document does not claim they are enabled for a particular account.
+
+---
+
+## ADR-011 — Agora-managed realtime media plane
+
+- **Status:** ACCEPTED
+- **Owner:** Realtime voice owner
+- **Date:** 2026-09-06
+
+### Decision
+
+Agora Conversational AI Engine replaces the self-hosted media worker. The browser joins one server-derived RTC channel, publishes customer audio, subscribes to the managed agent's remote audio, renews short-lived RTC tokens, and stops playback on hang-up. Flask alone creates and stops agents using server-held Agora REST credentials.
+
+The managed chain uses Agora ARES speech recognition, Agora voice activity/interruption handling, and OpenAI text-to-speech. Its LLM target is a private, authenticated, OpenAI-compatible Flask endpoint backed by the existing LangGraph turn executor. Pricing, qualification, policy checks, MCP calls, transaction confirmation, and durable workflow transitions remain backend authority. Provider callbacks are untrusted input and require signature verification, replay protection, tenant/session resolution, and durable deduplication before they can alter projections.
+
+No Agora certificate, Agora REST credential, OpenAI key, private LLM key, or webhook secret enters browser configuration. Agent start/stop results are shown as confirmed only after Agora acknowledges them. Staging and production startup fail unless the complete managed-agent secret set and HTTPS private LLM URL are configured.
+
+### Consequences
+
+- The old self-hosted voice-worker deployment is retired; Flask API and SSE/event relay processes remain independently scalable.
+- Real Agora staging calls, quota review, callback verification, inactivity cleanup, and the private LangGraph streaming adapter remain mandatory release evidence.
+- Local/CI tests mock only the provider boundary and must never be used as proof of provider availability.

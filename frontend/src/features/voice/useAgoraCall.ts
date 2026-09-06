@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { IAgoraRTCClient, IMicrophoneAudioTrack, UID } from "agora-rtc-sdk-ng";
+import type { IAgoraRTCClient, IMicrophoneAudioTrack, IRemoteAudioTrack, UID } from "agora-rtc-sdk-ng";
 import { createUuid7, VoiceEventSync, type VoiceControlEventType } from "./voiceEventSync";
 
 /**
@@ -37,9 +37,27 @@ export interface UseAgoraCallResult {
   status: CallStatus;
   errorMessage: string | null;
   muted: boolean;
+  audioBlocked: boolean;
   join: () => Promise<void>;
   leave: () => Promise<void>;
   toggleMute: () => Promise<void>;
+  resumeAudio: () => void;
+}
+
+async function manageAgent(
+  apiBaseUrl: string, sessionId: string, csrfToken: string, method: "POST" | "DELETE",
+): Promise<{ agent_uid?: number; status: string }> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/sessions/${sessionId}/voice/agent`, {
+    method,
+    credentials: "include",
+    headers: {
+      "X-CSRF-Token": csrfToken,
+      "Idempotency-Key": createUuid7(),
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`The managed voice agent could not be ${method === "POST" ? "started" : "stopped"} (status ${response.status}).`);
+  return (await response.json()) as { agent_uid?: number; status: string };
 }
 
 async function requestVoiceToken(
@@ -127,11 +145,14 @@ export function useAgoraCall(
   const [status, setStatus] = useState<CallStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const clientRef = useRef<IAgoraRTCClient | null>(null);
   const trackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const eventSyncRef = useRef<VoiceEventSync | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const endingRef = useRef(false);
+  const agentUidRef = useRef<number | null>(null);
+  const remoteAudioRef = useRef(new Set<IRemoteAudioTrack>());
 
   const synchronize = useCallback(
     async (eventType: VoiceControlEventType) => {
@@ -173,6 +194,10 @@ export function useAgoraCall(
         // The client may already be disconnected; there is nothing further to clean up.
       }
     }
+    remoteAudioRef.current.forEach((track) => track.stop());
+    remoteAudioRef.current.clear();
+    agentUidRef.current = null;
+    setAudioBlocked(false);
   }, []);
 
   const leave = useCallback(async () => {
@@ -183,6 +208,7 @@ export function useAgoraCall(
         synchronize("CALL_ENDED"),
         new Promise<void>((resolve) => window.setTimeout(resolve, 2_000)),
       ]).catch(() => undefined);
+      await manageAgent(apiBaseUrl, sessionId, csrfToken, "DELETE").catch(() => undefined);
       await fetch(`${apiBaseUrl}/api/v1/sessions/${sessionId}/voice/token`, {
         method: "DELETE",
         credentials: "include",
@@ -247,6 +273,26 @@ export function useAgoraCall(
             void teardown();
           });
       });
+      client.on("user-published", async (user, mediaType) => {
+        if (mediaType !== "audio") return;
+        await client.subscribe(user, mediaType);
+        if (agentUidRef.current !== null && Number(user.uid) !== agentUidRef.current) return;
+        if (user.audioTrack) {
+          remoteAudioRef.current.add(user.audioTrack);
+          try {
+            user.audioTrack.play();
+            setAudioBlocked(false);
+          } catch {
+            setAudioBlocked(true);
+          }
+        }
+      });
+      client.on("user-unpublished", (user, mediaType) => {
+        if (mediaType === "audio" && user.audioTrack) {
+          user.audioTrack.stop();
+          remoteAudioRef.current.delete(user.audioTrack);
+        }
+      });
 
       setStatus("requesting-permission");
       const track = await AgoraRTC.createMicrophoneAudioTrack();
@@ -255,6 +301,11 @@ export function useAgoraCall(
       const uid: UID = issued.uid;
       await client.join(issued.app_id, issued.channel_name, issued.token, uid);
       await client.publish([track]);
+      const agent = await manageAgent(apiBaseUrl, sessionId, csrfToken, "POST");
+      if (agent.status !== "confirmed" || typeof agent.agent_uid !== "number") {
+        throw new Error("The managed voice agent did not confirm its connection.");
+      }
+      agentUidRef.current = agent.agent_uid;
       setMuted(false);
       setStatus("connected");
     } catch (error) {
@@ -288,6 +339,15 @@ export function useAgoraCall(
     }
   }, [muted, synchronize]);
 
+  const resumeAudio = useCallback(() => {
+    try {
+      remoteAudioRef.current.forEach((track) => track.play());
+      setAudioBlocked(false);
+    } catch {
+      setAudioBlocked(true);
+    }
+  }, []);
+
   useEffect(
     () => () => {
       void teardown();
@@ -306,5 +366,5 @@ export function useAgoraCall(
     return () => window.removeEventListener("online", flush);
   }, []);
 
-  return { status, errorMessage, muted, join, leave, toggleMute };
+  return { status, errorMessage, muted, audioBlocked, join, leave, toggleMute, resumeAudio };
 }

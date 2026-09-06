@@ -94,6 +94,7 @@ def test_migration_constraints_rls_query_plan_and_populated_rollback() -> None:
         assert "voice_control_events" in inspector.get_table_names()
         assert "voice_recovery_states" in inspector.get_table_names()
         assert "voice_consents" in inspector.get_table_names()
+        assert "mcp_server_registrations" in inspector.get_table_names()
         with engine.connect() as connection:
             rls = connection.execute(
                 sa.text(
@@ -103,6 +104,12 @@ def test_migration_constraints_rls_query_plan_and_populated_rollback() -> None:
             ).all()
             assert len(rls) == len(TENANT_TABLE_NAMES)
             assert all(enabled and forced for _, enabled, forced in rls)
+            registration_policy = connection.execute(
+                sa.text(
+                    "select relrowsecurity,relforcerowsecurity from pg_class where relname='mcp_server_registrations'"
+                )
+            ).one()
+            assert registration_policy == (True, True)
             assert connection.scalar(sa.text("select exists(select 1 from pg_extension where extname='vector')"))
 
         tenant_id = uuid4()

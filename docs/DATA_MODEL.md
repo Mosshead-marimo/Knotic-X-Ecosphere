@@ -123,6 +123,10 @@ Every event is appended to `domain_events` in the same transaction as its author
 | `knowledge_embeddings` | `id`, `tenant_id`, chunk ID, embedding provider/model/revision, dimensions, vector, created_at | unique `(chunk_id,model,revision)`; HNSW cosine index per active dimension/model plus tenant/domain filters | Rebuildable derived data; old index retained through validated cutover |
 | `knowledge_index_versions` | `id`, tenant/global scope, provider/model/revision, dimensions, chunker version, status, built/activated/retired times, evaluation reference | one active version per scope/domain | Retain metadata permanently; vectors follow rollback window |
 
+### Tenant MCP registration requests
+
+`mcp_server_registrations` stores tenant-scoped configuration requests, not credentials. Its authoritative fields are requester, display name, HTTPS server URL, transport, authentication scheme, declared capabilities, lifecycle status, safe status detail, idempotency-key HMAC, request hash, and timestamps. RLS is forced. Requests begin as `REQUESTED`; `ACTIVE` is permitted only after the platform activation workflow validates the registered server and resolves credentials from the approved secret provider. Registration and activation are audited separately.
+
 The initial OpenAI embedding adapter uses the dimension approved by its configured model revision. A dimension/model change creates a new index version and physical vector column/table or partition; vectors from different models/dimensions are never mixed. Retrieval filters tenant, classification, domain, effective time, and active index version before ranking. Product/security explanations may use approved chunks; mutable price, CRM, calendar, or availability facts never use pgvector as transactional truth.
 
 ## Redis active-state model

@@ -1,0 +1,1072 @@
+"""Tenant-isolated operator console projections and governed actions."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import ipaddress
+import json
+import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Any, Literal
+from urllib.parse import urlparse
+from urllib.request import urlopen
+from uuid import UUID
+
+import redis
+import sqlalchemy as sa
+from flask import Flask, Response, jsonify, request
+from flask.typing import ResponseReturnValue
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from sqlalchemy.engine import Connection, Engine, RowMapping
+from sqlalchemy.exc import DBAPIError, IntegrityError
+
+from knotic_api.config import BackendSettings
+from knotic_api.domain.identifiers import new_uuid7
+from knotic_api.persistence.hydration import StateFieldCipher, StateRecoveryError
+from knotic_api.security import (
+    AuthenticatedActor,
+    BrowserSessionValue,
+    RedisBrowserSessionStore,
+    RedisRateLimiter,
+    SecurityDependencyUnavailable,
+    derive_key,
+)
+
+_OPERATOR_ROLES = frozenset({"ADMIN", "SUPERVISOR", "SALES_REP"})
+_ADMIN_ROLES = frozenset({"ADMIN", "SUPERVISOR"})
+_KNOWLEDGE_TYPES = frozenset({"text/plain", "text/markdown", "text/x-markdown"})
+_KNOWLEDGE_EXTENSIONS = frozenset({".txt", ".md"})
+_SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._ -]+")
+_MAX_KNOWLEDGE_BYTES = 5_000_000
+
+
+class HandoffRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    reason: str = Field(min_length=3, max_length=500)
+    priority: Literal["LOW", "NORMAL", "HIGH", "URGENT"] = "NORMAL"
+    expected_session_version: int = Field(ge=1)
+
+
+class McpRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    display_name: str = Field(min_length=2, max_length=80)
+    server_url: str = Field(min_length=12, max_length=500)
+    transport: Literal["STREAMABLE_HTTP", "SSE"] = "STREAMABLE_HTTP"
+    auth_scheme: Literal["NONE", "BEARER", "OAUTH2"] = "BEARER"
+    capabilities: list[Literal["KNOWLEDGE", "CRM", "CALENDAR", "MESSAGING", "HANDOFF"]] = Field(
+        min_length=1, max_length=5
+    )
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("MCP server URL must be an HTTPS URL without embedded credentials")
+        if parsed.query or parsed.fragment:
+            raise ValueError("MCP server URL must not include query parameters or fragments")
+        hostname = parsed.hostname.casefold()
+        if hostname == "localhost" or hostname.endswith(".localhost"):
+            raise ValueError("MCP server URL must not target localhost")
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            address = None
+        if address and not address.is_global:
+            raise ValueError("MCP server URL must not target a private or reserved IP address")
+        return value.rstrip("/")
+
+    @field_validator("capabilities")
+    @classmethod
+    def validate_capabilities(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("MCP capabilities must be unique")
+        return value
+
+
+@dataclass(frozen=True, slots=True)
+class ConsoleDependencies:
+    settings: BackendSettings
+    engine: Engine
+    redis_client: redis.Redis
+    browser_sessions: RedisBrowserSessionStore
+    rate_limiter: RedisRateLimiter
+    allowed_origins: frozenset[str]
+
+
+class ConsoleProblem(Exception):
+    def __init__(self, status: int, code: str, message: str) -> None:
+        super().__init__(message)
+        self.status, self.code, self.message = status, code, message
+
+
+class ConsoleApi:
+    def __init__(self, app: Flask, dependencies: ConsoleDependencies) -> None:
+        self.app = app
+        self.dependencies = dependencies
+        master_key = dependencies.settings.session_security_key.get_secret_value().encode()
+        self._field_cipher = StateFieldCipher(master_key)
+        self._idempotency_key = derive_key(master_key, b"console-idempotency")
+
+    def register(self) -> None:
+        app = self.app
+        app.add_url_rule(
+            "/api/v1/console/sessions", endpoint="console_sessions", view_func=self.sessions, methods=["GET"]
+        )
+        app.add_url_rule(
+            "/api/v1/console/sessions/<session_id>", endpoint="console_session", view_func=self.session, methods=["GET"]
+        )
+        app.add_url_rule(
+            "/api/v1/console/sessions/<session_id>/handoff",
+            endpoint="console_handoff",
+            view_func=self.handoff,
+            methods=["POST"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/analytics", endpoint="console_analytics", view_func=self.analytics, methods=["GET"]
+        )
+        app.add_url_rule(
+            "/api/v1/console/integrations",
+            endpoint="console_integrations",
+            view_func=self.integrations,
+            methods=["GET", "POST"],
+        )
+        app.add_url_rule("/api/v1/console/system", endpoint="console_system", view_func=self.system, methods=["GET"])
+        app.add_url_rule(
+            "/api/v1/console/pending-work",
+            endpoint="console_pending_work",
+            view_func=self.pending_work,
+            methods=["GET"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/pending-work/<work_id>/retry",
+            endpoint="console_retry_work",
+            view_func=self.retry_work,
+            methods=["POST"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/knowledge/documents",
+            endpoint="console_knowledge_documents",
+            view_func=self.knowledge_documents,
+            methods=["GET", "POST"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/knowledge/documents/<document_id>/deactivate",
+            endpoint="console_knowledge_deactivate",
+            view_func=self.deactivate_knowledge_document,
+            methods=["POST"],
+        )
+        app.add_url_rule(
+            "/api/v1/console/knowledge/documents/<document_id>/reindex",
+            endpoint="console_knowledge_reindex",
+            view_func=self.reindex_knowledge_document,
+            methods=["POST"],
+        )
+
+    def sessions(self) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-sessions-read")
+            limit = self._integer_arg("limit", 25, 1, 100)
+            status = request.args.get("status")
+            if status and status not in {"CREATED", "ACTIVE", "ENDING", "ENDED", "FAILED"}:
+                raise ConsoleProblem(422, "VALIDATION_FAILED", "Session status filter is invalid.")
+            cursor = self._decode_cursor(request.args.get("cursor"))
+            parameters: dict[str, Any] = {
+                "tenant_id": actor.tenant_id,
+                "limit": limit + 1,
+                "status": status,
+                "cursor_at": cursor[0] if cursor else None,
+                "cursor_id": cursor[1] if cursor else None,
+            }
+            statement = sa.text(
+                "select s.*, l.name_ciphertext, l.company_ciphertext from sales_sessions s "
+                "left join leads l on l.tenant_id=s.tenant_id and l.id=s.lead_id "
+                "where s.tenant_id=:tenant_id and "
+                "(cast(:status as text) is null or s.status=cast(:status as text)) "
+                "and (cast(:cursor_at as timestamptz) is null or (s.updated_at,s.id) < "
+                "(cast(:cursor_at as timestamptz),cast(:cursor_id as uuid))) "
+                "order by s.updated_at desc,s.id desc limit :limit"
+            )
+            with self._connection(actor) as connection:
+                rows = list(connection.execute(statement, parameters).mappings())
+            has_more = len(rows) > limit
+            page = rows[:limit]
+            return jsonify(
+                items=[self._session_summary(row) for row in page],
+                next_cursor=self._encode_cursor(page[-1]) if has_more else None,
+                has_more=has_more,
+            )
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Session data is unavailable."))
+
+    def session(self, session_id: str) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-session-read")
+            parsed = self._uuid7(session_id)
+            with self._connection(actor) as connection:
+                row = (
+                    connection.execute(
+                        sa.text(
+                            "select s.*,l.name_ciphertext,l.company_ciphertext from sales_sessions s "
+                            "left join leads l on l.tenant_id=s.tenant_id and l.id=s.lead_id "
+                            "where s.tenant_id=:tenant_id and s.id=:session_id"
+                        ),
+                        {"tenant_id": actor.tenant_id, "session_id": parsed},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if row is None:
+                    raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Session was not found.")
+                messages = list(
+                    connection.execute(
+                        sa.text(
+                            "select id,speaker,source,content_ciphertext,interrupted,created_at from messages "
+                            "where tenant_id=:tenant_id and session_id=:session_id order by sequence,id limit 500"
+                        ),
+                        {"tenant_id": actor.tenant_id, "session_id": parsed},
+                    ).mappings()
+                )
+                requirements = list(
+                    connection.execute(
+                        sa.text(
+                            "select field,value_integer,value_text,value_text_array,value_numeric,"
+                            "currency,confidence,version from requirements_current "
+                            "where tenant_id=:tenant_id and session_id=:session_id order by field"
+                        ),
+                        {"tenant_id": actor.tenant_id, "session_id": parsed},
+                    ).mappings()
+                )
+                objections = list(
+                    connection.execute(
+                        sa.text(
+                            "select id,category,status,detail_ciphertext,version from objections "
+                            "where tenant_id=:tenant_id and session_id=:session_id order by created_at,id"
+                        ),
+                        {"tenant_id": actor.tenant_id, "session_id": parsed},
+                    ).mappings()
+                )
+                operations = self._session_operations(connection, actor.tenant_id, parsed)
+            body = self._session_summary(row)
+            body.update(
+                transcript=[self._message(actor.tenant_id, message) for message in messages],
+                requirements=[self._requirement(item) for item in requirements],
+                objections=[self._objection(actor.tenant_id, item) for item in objections],
+                operations=operations,
+            )
+            response = jsonify(body)
+            response.headers["ETag"] = f'"{row["version"]}"'
+            return response
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Session data is unavailable."))
+
+    def handoff(self, session_id: str) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-handoff", mutation=True)
+            parsed = self._uuid7(session_id)
+            payload = self._json(HandoffRequest)
+            key = self._idempotency_header()
+            key_hmac = hmac.new(self._idempotency_key, key.encode(), hashlib.sha256).digest()
+            handoff_id, now = new_uuid7(), datetime.now(UTC)
+            context = json.dumps(
+                {"session_id": session_id, "reason": payload.reason, "priority": payload.priority},
+                sort_keys=True,
+            )
+            encrypted = self._field_cipher.encrypt(
+                context, tenant_id=actor.tenant_id, aggregate_id=handoff_id, field="handoff_context"
+            )
+            try:
+                with self._connection(actor) as connection:
+                    session = (
+                        connection.execute(
+                            sa.text(
+                                "select version,status from sales_sessions "
+                                "where tenant_id=:tenant_id and id=:id for update"
+                            ),
+                            {"tenant_id": actor.tenant_id, "id": parsed},
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if session is None:
+                        raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Session was not found.")
+                    if session["version"] != payload.expected_session_version:
+                        raise ConsoleProblem(409, "VERSION_CONFLICT", "Session version changed; refresh and try again.")
+                    existing = (
+                        connection.execute(
+                            sa.text(
+                                "select id,status,priority,created_at from handoffs "
+                                "where tenant_id=:tenant_id and request_key_hmac=:key"
+                            ),
+                            {"tenant_id": actor.tenant_id, "key": key_hmac},
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing is not None:
+                        return jsonify(self._handoff_resource(existing)), 200
+                    connection.execute(
+                        sa.text(
+                            "insert into handoffs "
+                            "(id,tenant_id,session_id,reason,status,context_ciphertext,priority,"
+                            "requested_by,request_key_hmac) "
+                            "values (:id,:tenant_id,:session_id,:reason,'REQUESTED',:context,:priority,:actor_id,:key)"
+                        ),
+                        {
+                            "id": handoff_id,
+                            "tenant_id": actor.tenant_id,
+                            "session_id": parsed,
+                            "reason": payload.reason,
+                            "context": encrypted,
+                            "priority": payload.priority,
+                            "actor_id": actor.actor_id,
+                            "key": key_hmac,
+                        },
+                    )
+                    connection.execute(
+                        sa.text(
+                            "insert into domain_events "
+                            "(id,tenant_id,session_id,event_id,event_type,event_version,sequence,occurred_at,"
+                            "correlation_id,actor_id,actor_type,payload,payload_schema_version) "
+                            "select :event_id,:tenant_id,:session_id,:event_id,'operation.updated',1,"
+                            "coalesce(max(sequence),0)+1,:at,"
+                            ":event_id,:actor_id,'HUMAN_AGENT',cast(:payload as jsonb),1 from domain_events "
+                            "where tenant_id=:tenant_id and session_id=:session_id"
+                        ),
+                        {
+                            "event_id": new_uuid7(),
+                            "tenant_id": actor.tenant_id,
+                            "session_id": parsed,
+                            "at": now,
+                            "actor_id": actor.actor_id,
+                            "payload": json.dumps(
+                                {"kind": "HANDOFF", "status": "REQUESTED", "handoff_id": str(handoff_id)}
+                            ),
+                        },
+                    )
+            except IntegrityError:
+                return self._problem(
+                    ConsoleProblem(409, "IDEMPOTENCY_CONFLICT", "Handoff request is already being processed.")
+                )
+            return jsonify(
+                id=str(handoff_id), status="requested", priority=payload.priority, created_at=self._timestamp(now)
+            ), 202
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Handoff could not be requested."))
+
+    def analytics(self) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-analytics-read")
+            days = self._integer_arg("days", 30, 1, 366)
+            since = datetime.now(UTC) - timedelta(days=days)
+            with self._connection(actor) as connection:
+                summary = (
+                    connection.execute(
+                        sa.text(
+                            "select count(*) total,count(*) filter(where status='ACTIVE') active,"
+                            "count(*) filter(where outcome is not null) completed,"
+                            "coalesce(avg(qualification_score),0) average_score,"
+                            "coalesce(avg(extract(epoch from "
+                            "(coalesce(ended_at,timezone('utc',now()))-started_at))),0) "
+                            "average_duration_seconds "
+                            "from sales_sessions where tenant_id=:tenant_id and created_at>=:since"
+                        ),
+                        {"tenant_id": actor.tenant_id, "since": since},
+                    )
+                    .mappings()
+                    .one()
+                )
+                outcomes = list(
+                    connection.execute(
+                        sa.text(
+                            "select coalesce(outcome,'UNASSIGNED') outcome,count(*) count from sales_sessions "
+                            "where tenant_id=:tenant_id and created_at>=:since group by outcome order by count desc"
+                        ),
+                        {"tenant_id": actor.tenant_id, "since": since},
+                    ).mappings()
+                )
+                series = list(
+                    connection.execute(
+                        sa.text(
+                            "select date_trunc('day',created_at) bucket,count(*) total,"
+                            "count(*) filter(where outcome in ('LEAD_QUALIFIED','ENTERPRISE_DEMO_BOOKED')) converted "
+                            "from sales_sessions where tenant_id=:tenant_id and created_at>=:since "
+                            "group by bucket order by bucket"
+                        ),
+                        {"tenant_id": actor.tenant_id, "since": since},
+                    ).mappings()
+                )
+            total = int(summary["total"])
+            return jsonify(
+                range={"days": days, "from": self._timestamp(since), "to": self._timestamp(datetime.now(UTC))},
+                totals={
+                    "sessions": total,
+                    "active": int(summary["active"]),
+                    "completed": int(summary["completed"]),
+                    "average_qualification": round(float(summary["average_score"]), 1),
+                    "average_duration_seconds": round(float(summary["average_duration_seconds"]), 1),
+                },
+                conversion_rate=round(
+                    sum(
+                        int(row["count"])
+                        for row in outcomes
+                        if row["outcome"] in {"LEAD_QUALIFIED", "ENTERPRISE_DEMO_BOOKED"}
+                    )
+                    / total
+                    * 100,
+                    1,
+                )
+                if total
+                else 0,
+                outcomes=[dict(row) for row in outcomes],
+                series=[
+                    {"at": self._timestamp(row["bucket"]), "sessions": row["total"], "converted": row["converted"]}
+                    for row in series
+                ],
+            )
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Analytics are unavailable."))
+
+    def integrations(self) -> ResponseReturnValue:
+        try:
+            if request.method == "POST":
+                return self._request_mcp_registration()
+            actor, _ = self._authorize(action="console-integrations-read")
+            with self._connection(actor) as connection:
+                rows = list(
+                    connection.execute(
+                        sa.text(
+                            "select provider,status,count(*) count,max(updated_at) last_activity_at "
+                            "from pending_provider_updates "
+                            "where tenant_id=:tenant_id group by provider,status order by provider,status"
+                        ),
+                        {"tenant_id": actor.tenant_id},
+                    ).mappings()
+                )
+                registrations = list(
+                    connection.execute(
+                        sa.text(
+                            "select id,display_name,server_url,transport,auth_scheme,capabilities,status,"
+                            "safe_status_detail,created_at,updated_at from mcp_server_registrations "
+                            "where tenant_id=:tenant_id order by updated_at desc,id desc limit 100"
+                        ),
+                        {"tenant_id": actor.tenant_id},
+                    ).mappings()
+                )
+            mcp_status = self._mcp_status()
+            providers: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                item = providers.setdefault(
+                    str(row["provider"]), {"provider": row["provider"], "counts": {}, "last_activity_at": None}
+                )
+                item["counts"][str(row["status"]).lower()] = row["count"]
+                item["last_activity_at"] = self._timestamp(row["last_activity_at"])
+            return self._console_response(
+                {
+                    "mcp": {"status": mcp_status},
+                    "providers": list(providers.values()),
+                    "registrations": [self._mcp_registration_resource(row) for row in registrations],
+                }
+            )
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Integrations are unavailable."))
+
+    def _request_mcp_registration(self) -> ResponseReturnValue:
+        actor, _ = self._authorize(action="console-mcp-register", mutation=True, roles=_ADMIN_ROLES)
+        payload = self._json(McpRegistrationRequest)
+        key = self._idempotency_header()
+        key_hmac = hmac.new(self._idempotency_key, key.encode(), hashlib.sha256).digest()
+        canonical = json.dumps(payload.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode()
+        request_hash = hashlib.sha256(canonical).digest()
+        registration_id, now = new_uuid7(), datetime.now(UTC)
+        with self._connection(actor) as connection:
+            existing = (
+                connection.execute(
+                    sa.text(
+                        "select id,display_name,server_url,transport,auth_scheme,capabilities,status,"
+                        "safe_status_detail,created_at,updated_at,request_hash from mcp_server_registrations "
+                        "where tenant_id=:tenant_id and request_key_hmac=:key"
+                    ),
+                    {"tenant_id": actor.tenant_id, "key": key_hmac},
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None:
+                if not hmac.compare_digest(existing["request_hash"], request_hash):
+                    raise ConsoleProblem(409, "IDEMPOTENCY_CONFLICT", "Idempotency key was used for another request.")
+                return self._console_response(self._mcp_registration_resource(existing))
+            connection.execute(
+                sa.text(
+                    "insert into mcp_server_registrations "
+                    "(id,tenant_id,requested_by,display_name,server_url,transport,auth_scheme,capabilities,"
+                    "status,safe_status_detail,request_key_hmac,request_hash,created_at,updated_at) values "
+                    "(:id,:tenant_id,:actor_id,:display_name,:server_url,:transport,:auth_scheme,:capabilities,"
+                    "'REQUESTED',:detail,:key,:request_hash,:at,:at)"
+                ),
+                {
+                    "id": registration_id,
+                    "tenant_id": actor.tenant_id,
+                    "actor_id": actor.actor_id,
+                    "display_name": payload.display_name,
+                    "server_url": payload.server_url,
+                    "transport": payload.transport,
+                    "auth_scheme": payload.auth_scheme,
+                    "capabilities": payload.capabilities,
+                    "detail": "Awaiting platform validation and deployment-managed credentials.",
+                    "key": key_hmac,
+                    "request_hash": request_hash,
+                    "at": now,
+                },
+            )
+            connection.execute(
+                sa.text(
+                    "insert into audit_events "
+                    "(id,tenant_id,actor_id,workload,action,target_type,target_id,approval_decision,"
+                    "idempotency_key_hmac,request_schema_version,result,correlation_id,redacted_metadata,occurred_at) "
+                    "values (:audit_id,:tenant_id,:actor_id,'console','mcp.registration.requested','MCP_SERVER',"
+                    ":target_id,'PLATFORM_REVIEW_REQUIRED',:key,1,'REQUESTED',:correlation_id,"
+                    "cast(:metadata as jsonb),:at)"
+                ),
+                {
+                    "audit_id": new_uuid7(),
+                    "tenant_id": actor.tenant_id,
+                    "actor_id": actor.actor_id,
+                    "target_id": registration_id,
+                    "key": key_hmac,
+                    "correlation_id": new_uuid7(),
+                    "metadata": json.dumps(
+                        {
+                            "hostname": urlparse(payload.server_url).hostname,
+                            "transport": payload.transport,
+                            "auth_scheme": payload.auth_scheme,
+                            "capabilities": payload.capabilities,
+                        }
+                    ),
+                    "at": now,
+                },
+            )
+        return self._console_response(
+            {
+                "id": str(registration_id),
+                "display_name": payload.display_name,
+                "server_url": payload.server_url,
+                "transport": payload.transport,
+                "auth_scheme": payload.auth_scheme,
+                "capabilities": payload.capabilities,
+                "status": "requested",
+                "safe_status_detail": "Awaiting platform validation and deployment-managed credentials.",
+                "created_at": self._timestamp(now),
+                "updated_at": self._timestamp(now),
+            },
+            status=202,
+            location=f"/api/v1/console/integrations?registration_id={registration_id}",
+        )
+
+    def system(self) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-system-read")
+            checks: dict[str, str] = {}
+            try:
+                with self._connection(actor) as connection:
+                    connection.execute(sa.text("select 1"))
+                checks["postgres"] = "ok"
+            except DBAPIError:
+                checks["postgres"] = "unavailable"
+            try:
+                self.dependencies.redis_client.ping()
+                checks["redis"] = "ok"
+            except redis.RedisError:
+                checks["redis"] = "unavailable"
+            checks["mcp"] = self._mcp_status()
+            status = "ok" if all(value in {"ok", "available"} for value in checks.values()) else "degraded"
+            return jsonify(status=status, checks=checks, service="knotic-api", schema_revision="20260906_0014")
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+
+    def pending_work(self) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-pending-read")
+            with self._connection(actor) as connection:
+                rows = list(
+                    connection.execute(
+                        sa.text(
+                            "select id,provider,action,aggregate_type,aggregate_id,status,attempt_count,"
+                            "next_attempt_at,safe_error_code,updated_at from pending_provider_updates "
+                            "where tenant_id=:tenant_id order by updated_at desc,id desc limit 100"
+                        ),
+                        {"tenant_id": actor.tenant_id},
+                    ).mappings()
+                )
+            return jsonify(items=[self._json_row(row) for row in rows])
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+
+    def retry_work(self, work_id: str) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-pending-retry", mutation=True, roles=_ADMIN_ROLES)
+            parsed = self._uuid7(work_id)
+            self._idempotency_header()
+            with self._connection(actor) as connection:
+                row = (
+                    connection.execute(
+                        sa.text(
+                            "update pending_provider_updates set "
+                            "status='PENDING',next_attempt_at=timezone('utc',now()),"
+                            "lease_owner=null,lease_expires_at=null,updated_at=timezone('utc',now()) "
+                            "where tenant_id=:tenant_id and id=:id "
+                            "and status in ('FAILED_RETRYABLE','DEAD_LETTER') "
+                            "returning id,status,updated_at"
+                        ),
+                        {"tenant_id": actor.tenant_id, "id": parsed},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+            if row is None:
+                raise ConsoleProblem(409, "WORK_NOT_RETRYABLE", "Only failed retryable work can be retried.")
+            return jsonify(id=str(row["id"]), status="queued", updated_at=self._timestamp(row["updated_at"])), 202
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+
+    def knowledge_documents(self) -> ResponseReturnValue:
+        try:
+            if request.method == "POST":
+                return self._upload_knowledge_document()
+            actor, _ = self._authorize(action="console-knowledge-read", roles=_ADMIN_ROLES)
+            with self._connection(actor) as connection:
+                rows = list(
+                    connection.execute(
+                        sa.text(
+                            "select id,title,domain,classification,document_version,status,source_uri,"
+                            "effective_at,expires_at,created_at,updated_at from knowledge_documents "
+                            "where tenant_id=:tenant_id order by updated_at desc,id desc limit 200"
+                        ),
+                        {"tenant_id": actor.tenant_id},
+                    ).mappings()
+                )
+            return jsonify(items=[self._json_row(row) for row in rows])
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+        except (DBAPIError, SecurityDependencyUnavailable):
+            return self._problem(ConsoleProblem(503, "DEPENDENCY_UNAVAILABLE", "Knowledge data is unavailable."))
+
+    def _upload_knowledge_document(self) -> ResponseReturnValue:
+        actor, _ = self._authorize(action="console-knowledge-upload", mutation=True, roles=_ADMIN_ROLES)
+        self._idempotency_header()
+        upload = request.files.get("file")
+        if upload is None or not upload.filename:
+            raise ConsoleProblem(422, "VALIDATION_FAILED", "A document file is required.")
+        filename = _SAFE_FILENAME.sub("_", upload.filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]).strip(" .")
+        extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        content_type = (upload.mimetype or "").lower()
+        if extension not in _KNOWLEDGE_EXTENSIONS or content_type not in _KNOWLEDGE_TYPES:
+            raise ConsoleProblem(415, "UNSUPPORTED_DOCUMENT", "Only UTF-8 TXT and Markdown documents are accepted.")
+        body = upload.stream.read(_MAX_KNOWLEDGE_BYTES + 1)
+        if len(body) > _MAX_KNOWLEDGE_BYTES:
+            raise ConsoleProblem(413, "DOCUMENT_TOO_LARGE", "Documents may not exceed 5 MB.")
+        try:
+            text = body.decode("utf-8", errors="strict").replace("\x00", "").strip()
+        except UnicodeDecodeError as error:
+            raise ConsoleProblem(422, "INVALID_ENCODING", "The document must be valid UTF-8.") from error
+        if not text:
+            raise ConsoleProblem(422, "EMPTY_DOCUMENT", "The document has no indexable content.")
+        digest = hashlib.sha256(text.encode()).digest()
+        document_id, work_id, now = new_uuid7(), new_uuid7(), datetime.now(UTC)
+        domain = request.form.get("domain", "sales").strip().lower()
+        if not re.fullmatch(r"[a-z][a-z0-9_-]{1,63}", domain):
+            raise ConsoleProblem(422, "VALIDATION_FAILED", "Knowledge domain is invalid.")
+        chunks = self._knowledge_chunks(text)
+        with self._connection(actor) as connection:
+            version = int(
+                connection.execute(
+                    sa.text(
+                        "select coalesce(max(document_version),0)+1 from knowledge_documents "
+                        "where tenant_id=:tenant_id and source_hash=:source_hash"
+                    ),
+                    {"tenant_id": actor.tenant_id, "source_hash": digest},
+                ).scalar_one()
+            )
+            connection.execute(
+                sa.text(
+                    "insert into knowledge_documents "
+                    "(id,tenant_id,source_uri,source_hash,domain,title,classification,document_version,status) "
+                    "values (:id,:tenant_id,:source_uri,:source_hash,:domain,:title,'INTERNAL',"
+                    ":version,'PENDING_INDEX')"
+                ),
+                {
+                    "id": document_id,
+                    "tenant_id": actor.tenant_id,
+                    "source_uri": f"admin-upload://{filename}",
+                    "source_hash": digest,
+                    "domain": domain,
+                    "title": filename,
+                    "version": version,
+                },
+            )
+            for ordinal, chunk in enumerate(chunks):
+                connection.execute(
+                    sa.text(
+                        "insert into knowledge_chunks "
+                        "(id,tenant_id,document_id,document_version,ordinal,approved_text,token_count,"
+                        "metadata,content_hash) values (:id,:tenant_id,:document_id,:version,:ordinal,"
+                        ":text,:tokens,cast(:metadata as jsonb),:hash)"
+                    ),
+                    {
+                        "id": new_uuid7(),
+                        "tenant_id": actor.tenant_id,
+                        "document_id": document_id,
+                        "version": version,
+                        "ordinal": ordinal,
+                        "text": chunk,
+                        "tokens": max(1, len(chunk.split())),
+                        "metadata": json.dumps({"filename": filename}),
+                        "hash": hashlib.sha256(chunk.encode()).digest(),
+                    },
+                )
+            self._queue_knowledge_work(connection, actor, document_id, work_id, "KNOWLEDGE_INDEX", now)
+        return jsonify(id=str(document_id), status="queued", indexing_status="pending", version=version), 202
+
+    def deactivate_knowledge_document(self, document_id: str) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-knowledge-deactivate", mutation=True, roles=_ADMIN_ROLES)
+            self._idempotency_header()
+            parsed = self._uuid7(document_id)
+            with self._connection(actor) as connection:
+                row = (
+                    connection.execute(
+                        sa.text(
+                            "update knowledge_documents set status='INACTIVE',updated_at=timezone('utc',now()) "
+                            "where tenant_id=:tenant_id and id=:id and status!='INACTIVE' "
+                            "returning id,status,updated_at"
+                        ),
+                        {"tenant_id": actor.tenant_id, "id": parsed},
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+            if row is None:
+                raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Active document was not found.")
+            return jsonify(id=str(row["id"]), status="confirmed", document_status="inactive"), 200
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+
+    def reindex_knowledge_document(self, document_id: str) -> ResponseReturnValue:
+        try:
+            actor, _ = self._authorize(action="console-knowledge-reindex", mutation=True, roles=_ADMIN_ROLES)
+            self._idempotency_header()
+            parsed, work_id, now = self._uuid7(document_id), new_uuid7(), datetime.now(UTC)
+            with self._connection(actor) as connection:
+                row = connection.execute(
+                    sa.text(
+                        "update knowledge_documents set status='PENDING_INDEX',updated_at=:at "
+                        "where tenant_id=:tenant_id and id=:id returning id"
+                    ),
+                    {"tenant_id": actor.tenant_id, "id": parsed, "at": now},
+                ).one_or_none()
+                if row is None:
+                    raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Document was not found.")
+                self._queue_knowledge_work(connection, actor, parsed, work_id, "KNOWLEDGE_REINDEX", now)
+            return jsonify(id=str(parsed), status="queued", indexing_status="pending"), 202
+        except ConsoleProblem as problem:
+            return self._problem(problem)
+
+    def _queue_knowledge_work(
+        self,
+        connection: Connection,
+        actor: AuthenticatedActor,
+        document_id: UUID,
+        work_id: UUID,
+        action: str,
+        now: datetime,
+    ) -> None:
+        payload = self._field_cipher.encrypt(
+            json.dumps({"document_id": str(document_id), "action": action}),
+            tenant_id=actor.tenant_id,
+            aggregate_id=work_id,
+            field="provider_payload",
+        )
+        connection.execute(
+            sa.text(
+                "insert into pending_provider_updates "
+                "(id,tenant_id,provider,action,aggregate_type,aggregate_id,payload_ciphertext,status,next_attempt_at) "
+                "values (:id,:tenant_id,'MCP_KNOWLEDGE',:action,'KNOWLEDGE_DOCUMENT',"
+                ":document_id,:payload,'PENDING',:at)"
+            ),
+            {
+                "id": work_id,
+                "tenant_id": actor.tenant_id,
+                "action": action,
+                "document_id": document_id,
+                "payload": payload,
+                "at": now,
+            },
+        )
+
+    @staticmethod
+    def _knowledge_chunks(text: str, limit: int = 900) -> list[str]:
+        chunks: list[str] = []
+        current: list[str] = []
+        for word in text.split():
+            if current and len(" ".join((*current, word))) > limit:
+                chunks.append(" ".join(current))
+                current = []
+            current.append(word)
+        if current:
+            chunks.append(" ".join(current))
+        return chunks
+
+    def _authorize(
+        self, *, action: str, mutation: bool = False, roles: frozenset[str] = _OPERATOR_ROLES
+    ) -> tuple[AuthenticatedActor, BrowserSessionValue]:
+        authenticated = self.dependencies.browser_sessions.authenticate(request.cookies.get("knotic_session"))
+        if authenticated is None:
+            raise ConsoleProblem(401, "AUTHENTICATION_REQUIRED", "Authentication is required.")
+        actor, session = authenticated
+        if not roles.intersection(actor.roles):
+            raise ConsoleProblem(403, "PERMISSION_DENIED", "This operator role cannot access the resource.")
+        if mutation:
+            if request.headers.get("Origin") not in self.dependencies.allowed_origins:
+                raise ConsoleProblem(403, "ORIGIN_DENIED", "Request origin is not allowed.")
+            if not self.dependencies.browser_sessions.verify_csrf(session, request.headers.get("X-CSRF-Token")):
+                raise ConsoleProblem(403, "CSRF_FAILED", "CSRF validation failed.")
+        decision = self.dependencies.rate_limiter.check(actor, action=action, limit=120)
+        if not decision.allowed:
+            raise ConsoleProblem(429, "RATE_LIMITED", "Rate limit exceeded.")
+        return actor, session
+
+    @contextmanager
+    def _connection(self, actor: AuthenticatedActor) -> Iterator[Connection]:
+        with self.dependencies.engine.begin() as connection:
+            connection.execute(
+                sa.text("select set_config('app.tenant_id',:tenant,true)"),
+                {"tenant": str(actor.tenant_id)},
+            )
+            connection.execute(
+                sa.text("select set_config('app.actor_id',:actor,true)"),
+                {"actor": str(actor.actor_id)},
+            )
+            yield connection
+
+    def _session_summary(self, row: RowMapping) -> dict[str, Any]:
+        name, company = None, None
+        if row.get("lead_id"):
+            name = self._decrypt(row.get("name_ciphertext"), row["tenant_id"], row["lead_id"], "name")
+            company = self._decrypt(row.get("company_ciphertext"), row["tenant_id"], row["lead_id"], "company")
+        return {
+            "session_id": str(row["id"]),
+            "version": row["version"],
+            "status": row["status"],
+            "customer": {"name": name or "Anonymous prospect", "company": company},
+            "current_intent": row["current_intent"],
+            "buying_stage": row["buying_stage"] or "NURTURE",
+            "qualification_score": row["qualification_score"] or 0,
+            "next_best_action": row["next_best_action"],
+            "outcome": row["outcome"],
+            "started_at": self._timestamp(row["started_at"]),
+            "updated_at": self._timestamp(row["updated_at"]),
+            "ended_at": self._timestamp(row["ended_at"]) if row["ended_at"] else None,
+        }
+
+    def _message(self, tenant_id: UUID, row: RowMapping) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "speaker": row["speaker"],
+            "source": row["source"],
+            "content": self._decrypt(row["content_ciphertext"], tenant_id, row["id"], "message_content")
+            or "[Content unavailable]",
+            "interrupted": row["interrupted"],
+            "created_at": self._timestamp(row["created_at"]),
+        }
+
+    @staticmethod
+    def _requirement(row: RowMapping) -> dict[str, Any]:
+        value = next(
+            (
+                row[key]
+                for key in ("value_integer", "value_text", "value_text_array", "value_numeric")
+                if row[key] is not None
+            ),
+            None,
+        )
+        return {
+            "field": row["field"],
+            "value": value,
+            "currency": row["currency"],
+            "confidence": float(row["confidence"]),
+            "version": row["version"],
+        }
+
+    def _objection(self, tenant_id: UUID, row: RowMapping) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "category": row["category"],
+            "status": row["status"],
+            "detail": self._decrypt(row["detail_ciphertext"], tenant_id, row["id"], "objection_detail")
+            or "Details unavailable",
+            "version": row["version"],
+        }
+
+    @staticmethod
+    def _session_operations(connection: Any, tenant_id: UUID, session_id: UUID) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for name, query in {
+            "meetings": (
+                "select id,status,provider,scheduled_at,created_at from meetings "
+                "where tenant_id=:tenant_id and session_id=:session_id order by created_at desc"
+            ),
+            "followups": (
+                "select id,status,channel,scheduled_at,created_at from followups "
+                "where tenant_id=:tenant_id and session_id=:session_id order by created_at desc"
+            ),
+            "handoffs": (
+                "select id,status,reason,priority,assigned_agent_id,created_at from handoffs "
+                "where tenant_id=:tenant_id and session_id=:session_id order by created_at desc"
+            ),
+        }.items():
+            rows = connection.execute(sa.text(query), {"tenant_id": tenant_id, "session_id": session_id}).mappings()
+            result[name] = [ConsoleApi._json_row(row) for row in rows]
+        return result
+
+    def _decrypt(self, value: bytes | None, tenant_id: UUID, aggregate_id: UUID, field: str) -> str | None:
+        if value is None:
+            return None
+        try:
+            return self._field_cipher.decrypt(value, tenant_id=tenant_id, aggregate_id=aggregate_id, field=field)
+        except StateRecoveryError:
+            self.app.logger.warning("console projection could not decrypt %s", field)
+            return None
+
+    def _mcp_status(self) -> str:
+        try:
+            with urlopen(f"{self.dependencies.settings.mcp_base_url}/health/ready", timeout=2) as response:  # noqa: S310
+                return "available" if response.status == 200 else "degraded"
+        except Exception:
+            return "unavailable"
+
+    @staticmethod
+    def _json_row(row: RowMapping) -> dict[str, Any]:
+        return {key: ConsoleApi._json_value(value) for key, value in row.items()}
+
+    @staticmethod
+    def _json_value(value: Any) -> Any:
+        if isinstance(value, UUID):
+            return str(value)
+        if isinstance(value, datetime):
+            return ConsoleApi._timestamp(value)
+        if isinstance(value, Decimal):
+            return float(value)
+        return value
+
+    @staticmethod
+    def _handoff_resource(row: RowMapping) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "status": str(row["status"]).lower(),
+            "priority": row["priority"],
+            "created_at": ConsoleApi._timestamp(row["created_at"]),
+        }
+
+    @staticmethod
+    def _mcp_registration_resource(row: RowMapping) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "display_name": row["display_name"],
+            "server_url": row["server_url"],
+            "transport": row["transport"],
+            "auth_scheme": row["auth_scheme"],
+            "capabilities": list(row["capabilities"]),
+            "status": str(row["status"]).lower(),
+            "safe_status_detail": row["safe_status_detail"],
+            "created_at": ConsoleApi._timestamp(row["created_at"]),
+            "updated_at": ConsoleApi._timestamp(row["updated_at"]),
+        }
+
+    @staticmethod
+    def _console_response(body: dict[str, Any], *, status: int = 200, location: str | None = None) -> Response:
+        response = jsonify(body)
+        response.status_code = status
+        response.headers["X-Request-ID"] = str(new_uuid7())
+        if location is not None:
+            response.headers["Location"] = location
+        return response
+
+    @staticmethod
+    def _timestamp(value: datetime) -> str:
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _uuid7(value: str) -> UUID:
+        try:
+            parsed = UUID(value)
+        except ValueError as error:
+            raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Resource was not found.") from error
+        if parsed.version != 7:
+            raise ConsoleProblem(404, "RESOURCE_NOT_FOUND", "Resource was not found.")
+        return parsed
+
+    @staticmethod
+    def _integer_arg(name: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            value = int(request.args.get(name, default))
+        except ValueError as error:
+            raise ConsoleProblem(422, "VALIDATION_FAILED", f"{name} must be an integer.") from error
+        if not minimum <= value <= maximum:
+            raise ConsoleProblem(422, "VALIDATION_FAILED", f"{name} is out of range.")
+        return value
+
+    @staticmethod
+    def _json(model: type[BaseModel]) -> Any:
+        try:
+            return model.model_validate(request.get_json())
+        except (ValidationError, TypeError) as error:
+            raise ConsoleProblem(422, "VALIDATION_FAILED", "Request body is invalid.") from error
+
+    @staticmethod
+    def _idempotency_header() -> str:
+        value = request.headers.get("Idempotency-Key", "")
+        if not 16 <= len(value) <= 128 or not value.isascii():
+            raise ConsoleProblem(400, "IDEMPOTENCY_KEY_REQUIRED", "A valid Idempotency-Key is required.")
+        return value
+
+    @staticmethod
+    def _encode_cursor(row: RowMapping) -> str:
+        body = json.dumps([ConsoleApi._timestamp(row["updated_at"]), str(row["id"])], separators=(",", ":")).encode()
+        return base64.urlsafe_b64encode(body).decode().rstrip("=")
+
+    @staticmethod
+    def _decode_cursor(value: str | None) -> tuple[datetime, UUID] | None:
+        if not value:
+            return None
+        try:
+            raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+            at, identifier = json.loads(raw)
+            return datetime.fromisoformat(at.replace("Z", "+00:00")), UUID(identifier)
+        except Exception as error:
+            raise ConsoleProblem(422, "VALIDATION_FAILED", "Cursor is invalid.") from error
+
+    @staticmethod
+    def _problem(problem: ConsoleProblem) -> tuple[Any, int]:
+        return jsonify(error={"code": problem.code, "message": problem.message}), problem.status
+
+
+def register_console_api(app: Flask, dependencies: ConsoleDependencies) -> None:
+    ConsoleApi(app, dependencies).register()

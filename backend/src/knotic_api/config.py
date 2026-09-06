@@ -20,6 +20,10 @@ _OPTIONAL_SECRETS = {
     "previous_mcp_auth_token": "KNOTIC_MCP_AUTH_TOKEN_PREVIOUS",
     "metrics_auth_token": "KNOTIC_METRICS_AUTH_TOKEN",
     "openai_api_key": "KNOTIC_OPENAI_API_KEY",
+    "oidc_client_secret": "KNOTIC_OIDC_CLIENT_SECRET",
+    "agora_customer_id": "KNOTIC_AGORA_CUSTOMER_ID",
+    "agora_customer_secret": "KNOTIC_AGORA_CUSTOMER_SECRET",
+    "agora_llm_api_key": "KNOTIC_AGORA_LLM_API_KEY",
 }
 _PLACEHOLDERS = ("change-me", "replace-me", "example-only", "insert-secret")
 
@@ -71,6 +75,21 @@ class BackendSettings(CommonSettings):
     openai_model: Literal["gpt-5.6-terra"] = Field(default="gpt-5.6-terra", validation_alias="KNOTIC_OPENAI_MODEL")
     openai_timeout_seconds: float = Field(
         default=12.0, ge=1.0, le=30.0, validation_alias="KNOTIC_OPENAI_TIMEOUT_SECONDS"
+    )
+    oidc_issuer: str | None = Field(default=None, validation_alias="KNOTIC_OIDC_ISSUER")
+    oidc_client_id: str | None = Field(default=None, validation_alias="KNOTIC_OIDC_CLIENT_ID")
+    oidc_client_secret: SecretStr | None = None
+    oidc_redirect_uri: str | None = Field(default=None, validation_alias="KNOTIC_OIDC_REDIRECT_URI")
+    oidc_tenant_claim: str = Field(default="tenant", validation_alias="KNOTIC_OIDC_TENANT_CLAIM")
+    oidc_roles_claim: str = Field(default="roles", validation_alias="KNOTIC_OIDC_ROLES_CLAIM")
+    oidc_name_claim: str = Field(default="name", validation_alias="KNOTIC_OIDC_NAME_CLAIM")
+    agora_customer_id: SecretStr | None = None
+    agora_customer_secret: SecretStr | None = None
+    agora_llm_url: str | None = Field(default=None, validation_alias="KNOTIC_AGORA_LLM_URL")
+    agora_llm_api_key: SecretStr | None = None
+    agora_agent_api_url: str = Field(
+        default="https://api.agora.io/api/conversational-ai-agent/v2",
+        validation_alias="KNOTIC_AGORA_AGENT_API_URL",
     )
 
     @field_validator("mcp_base_url")
@@ -139,6 +158,36 @@ class BackendSettings(CommonSettings):
     def validate_openai_api_key(cls, value: SecretStr | None) -> SecretStr | None:
         return _validate_secret("KNOTIC_OPENAI_API_KEY", value, 20) if value is not None else None
 
+    @field_validator("oidc_client_secret", "agora_customer_secret", "agora_llm_api_key")
+    @classmethod
+    def validate_oidc_client_secret(cls, value: SecretStr | None) -> SecretStr | None:
+        return _validate_secret("KNOTIC_OIDC_CLIENT_SECRET", value, 16) if value is not None else None
+
+    @field_validator("agora_customer_id")
+    @classmethod
+    def validate_agora_customer_id(cls, value: SecretStr | None) -> SecretStr | None:
+        return _validate_secret("KNOTIC_AGORA_CUSTOMER_ID", value, 8) if value is not None else None
+
+    @field_validator("agora_llm_url", "agora_agent_api_url")
+    @classmethod
+    def validate_agora_urls(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("Agora service URLs must be absolute HTTP(S) URLs")
+        return value.rstrip("/")
+
+    @field_validator("oidc_issuer", "oidc_redirect_uri")
+    @classmethod
+    def validate_oidc_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("OIDC URLs must be absolute HTTP(S) URLs")
+        return value.rstrip("/")
+
     @field_validator("otel_exporter_otlp_endpoint")
     @classmethod
     def validate_otel_endpoint(cls, value: str | None) -> str | None:
@@ -165,6 +214,23 @@ class BackendSettings(CommonSettings):
                 raise ValueError("KNOTIC_METRICS_AUTH_TOKEN is required in staging and production")
             if self.otel_exporter_otlp_endpoint is None:
                 raise ValueError("KNOTIC_OTEL_EXPORTER_OTLP_ENDPOINT is required in staging and production")
+            if not all((self.oidc_issuer, self.oidc_client_id, self.oidc_client_secret, self.oidc_redirect_uri)):
+                raise ValueError("OIDC configuration is required in staging and production")
+            oidc_issuer, oidc_redirect_uri = self.oidc_issuer or "", self.oidc_redirect_uri or ""
+            if not oidc_issuer.startswith("https://") or not oidc_redirect_uri.startswith("https://"):
+                raise ValueError("managed-environment OIDC URLs must use HTTPS")
+            if not all(
+                (
+                    self.agora_customer_id,
+                    self.agora_customer_secret,
+                    self.agora_llm_url,
+                    self.agora_llm_api_key,
+                    self.openai_api_key,
+                )
+            ):
+                raise ValueError("Agora managed-agent and OpenAI TTS configuration is required")
+            if not (self.agora_llm_url or "").startswith("https://"):
+                raise ValueError("KNOTIC_AGORA_LLM_URL must use HTTPS in managed environments")
         return self
 
 

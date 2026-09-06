@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from sqlalchemy.engine import Engine
 
 from knotic_api.app import create_app
 from knotic_api.config import BackendSettings
+from knotic_api.event_stream import DomainEventRelay, EventStreamDependencies
 from knotic_api.lifecycle_api import LifecycleDependencies, build_lifecycle_dependencies
 
 ROOT = Path(__file__).parents[2]
@@ -77,9 +79,15 @@ def test_dev_session_issues_a_cookie_that_can_create_a_real_sales_session(
     csrf_token = bootstrap.get_json()["csrf_token"]
     assert "knotic_session" in bootstrap.headers.get("Set-Cookie", "")
 
+    session = client.get("/api/v1/auth/session")
+    assert session.status_code == 200
+    assert session.get_json()["csrf_token"] == csrf_token
+    assert session.get_json()["actor"]["roles"] == ["ADMIN"]
+
     # A second bootstrap call must not fail even though the demo tenant row already exists.
     second_bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
     assert second_bootstrap.status_code == 200
+    csrf_token = second_bootstrap.get_json()["csrf_token"]
 
     created = client.post(
         "/api/v1/sessions",
@@ -98,3 +106,174 @@ def test_dev_session_issues_a_cookie_that_can_create_a_real_sales_session(
             sa.text("select count(*) from tenants where slug = 'local-demo'")
         ).scalar_one()
     assert tenant_count == 1
+
+
+@pytest.mark.integration
+def test_dev_session_logout_requires_csrf_and_revokes_cookie(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    _, _, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    assert client.post("/api/v1/auth/logout", headers={"Origin": ORIGIN}).status_code == 403
+    signed_out = client.post("/api/v1/auth/logout", headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token})
+    assert signed_out.status_code == 200
+    assert client.get("/api/v1/auth/session").status_code == 401
+
+
+@pytest.mark.integration
+def test_operator_console_lists_sessions_and_requests_idempotent_handoff(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    engine, redis_client, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    created = client.post(
+        "/api/v1/sessions",
+        json={"locale": "en-US", "timezone": "UTC"},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token, "Idempotency-Key": "console-session-create-00000001"},
+    )
+    session = created.get_json()
+    listing = client.get("/api/v1/console/sessions?limit=10")
+    assert listing.status_code == 200
+    assert any(item["session_id"] == session["session_id"] for item in listing.get_json()["items"])
+    details = client.get(f"/api/v1/console/sessions/{session['session_id']}")
+    assert details.status_code == 200
+    assert details.get_json()["transcript"] == []
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf_token, "Idempotency-Key": "console-handoff-00000000001"}
+    first = client.post(
+        f"/api/v1/console/sessions/{session['session_id']}/handoff",
+        json={
+            "reason": "Customer requested a person",
+            "priority": "HIGH",
+            "expected_session_version": session["version"],
+        },
+        headers=headers,
+    )
+    assert first.status_code == 202
+    assert first.get_json()["status"] == "requested"
+    replay = client.post(
+        f"/api/v1/console/sessions/{session['session_id']}/handoff",
+        json={
+            "reason": "Customer requested a person",
+            "priority": "HIGH",
+            "expected_session_version": session["version"],
+        },
+        headers=headers,
+    )
+    assert replay.status_code == 200
+    assert replay.get_json()["id"] == first.get_json()["id"]
+
+    relay = DomainEventRelay(
+        EventStreamDependencies(engine, redis_client, dependencies.browser_sessions, settings.environment.value)
+    )
+    assert relay.relay_once() >= 1
+    stream = client.get(
+        "/api/v1/console/stream",
+        headers={"Last-Event-ID": "0-0"},
+        buffered=False,
+    )
+    assert stream.status_code == 200
+    chunks = iter(stream.response)
+    assert b"event: ready" in next(chunks)
+    assert b"event: session.changed" in next(chunks)
+    stream.close()
+
+
+@pytest.mark.integration
+def test_knowledge_upload_validation_queue_and_tombstone(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    _, _, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    headers = {
+        "Origin": ORIGIN,
+        "X-CSRF-Token": csrf_token,
+        "Idempotency-Key": "knowledge-upload-000000000001",
+    }
+    rejected = client.post(
+        "/api/v1/console/knowledge/documents",
+        data={"file": (io.BytesIO(b"binary"), "unsafe.pdf", "application/pdf"), "domain": "sales"},
+        headers=headers,
+    )
+    assert rejected.status_code == 415
+
+    uploaded = client.post(
+        "/api/v1/console/knowledge/documents",
+        data={
+            "file": (io.BytesIO(b"Approved pricing guidance"), "pricing.md", "text/markdown"),
+            "domain": "sales",
+        },
+        headers=headers,
+    )
+    assert uploaded.status_code == 202
+    document_id = uploaded.get_json()["id"]
+    assert uploaded.get_json()["status"] == "queued"
+    listing = client.get("/api/v1/console/knowledge/documents")
+    assert listing.status_code == 200
+    assert any(item["id"] == document_id and item["status"] == "PENDING_INDEX" for item in listing.get_json()["items"])
+
+    deactivated = client.post(
+        f"/api/v1/console/knowledge/documents/{document_id}/deactivate",
+        headers={**headers, "Idempotency-Key": "knowledge-deactivate-0000001"},
+    )
+    assert deactivated.status_code == 200
+    assert deactivated.get_json()["status"] == "confirmed"
+    reindexed = client.post(
+        f"/api/v1/console/knowledge/documents/{document_id}/reindex",
+        headers={**headers, "Idempotency-Key": "knowledge-reindex-0000000001"},
+    )
+    assert reindexed.status_code == 202
+    assert reindexed.get_json()["status"] == "queued"
+
+
+@pytest.mark.integration
+def test_mcp_registration_is_governed_idempotent_and_listed_without_credentials(
+    dev_auth_services: tuple[Engine, redis.Redis, LifecycleDependencies, BackendSettings],
+) -> None:
+    _, _, dependencies, settings = dev_auth_services
+    client = create_app(settings, lifecycle_dependencies=dependencies).test_client()
+    bootstrap = client.post("/api/v1/auth/dev-session", headers={"Origin": ORIGIN})
+    csrf_token = bootstrap.get_json()["csrf_token"]
+    headers = {
+        "Origin": ORIGIN,
+        "X-CSRF-Token": csrf_token,
+        "Idempotency-Key": "mcp-registration-000000000001",
+    }
+    payload = {
+        "display_name": "Product knowledge",
+        "server_url": "https://mcp.vendor.example/mcp",
+        "transport": "STREAMABLE_HTTP",
+        "auth_scheme": "BEARER",
+        "capabilities": ["KNOWLEDGE"],
+    }
+
+    requested = client.post("/api/v1/console/integrations", json=payload, headers=headers)
+    assert requested.status_code == 202, requested.get_json()
+    assert requested.get_json()["status"] == "requested"
+    assert requested.headers["Location"].startswith("/api/v1/console/integrations?registration_id=")
+    assert requested.headers["X-Request-ID"]
+    registration_id = requested.get_json()["id"]
+
+    replay = client.post("/api/v1/console/integrations", json=payload, headers=headers)
+    assert replay.status_code == 200
+    assert replay.get_json()["id"] == registration_id
+
+    listing = client.get("/api/v1/console/integrations")
+    assert listing.status_code == 200
+    assert listing.headers["X-Request-ID"]
+    registration = next(item for item in listing.get_json()["registrations"] if item["id"] == registration_id)
+    assert registration["capabilities"] == ["KNOWLEDGE"]
+    assert "token" not in registration
+    assert "secret" not in registration
+
+    rejected = client.post(
+        "/api/v1/console/integrations",
+        json={**payload, "server_url": "http://127.0.0.1:8090/mcp"},
+        headers={**headers, "Idempotency-Key": "mcp-registration-unsafe-00001"},
+    )
+    assert rejected.status_code == 422

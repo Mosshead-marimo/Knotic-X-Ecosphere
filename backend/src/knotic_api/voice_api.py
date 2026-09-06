@@ -35,6 +35,7 @@ from knotic_api.voice.event_sync import (
     VoiceEventStoreUnavailable,
     VoiceEventSynchronizer,
 )
+from knotic_api.voice.managed_agent import ManagedAgentService, ManagedAgentUnavailable
 from knotic_api.voice.privacy import (
     VoiceConsentRequest,
     VoiceConsentRequired,
@@ -67,6 +68,7 @@ class VoiceDependencies:
     event_synchronizer: VoiceEventSynchronizer
     privacy: VoicePrivacyService
     telemetry: VoiceObservability
+    managed_agents: ManagedAgentService | None = None
 
 
 class VoiceApiProblem(Exception):
@@ -100,6 +102,71 @@ class VoiceApi:
         self.app.add_url_rule(
             "/api/v1/sessions/<session_id>/voice/consent", view_func=self.grant_consent, methods=["POST"]
         )
+        self.app.add_url_rule("/api/v1/sessions/<session_id>/voice/agent", view_func=self.start_agent, methods=["POST"])
+        self.app.add_url_rule(
+            "/api/v1/sessions/<session_id>/voice/agent", view_func=self.stop_agent, methods=["DELETE"]
+        )
+
+    def start_agent(self, session_id: str) -> ResponseReturnValue:
+        try:
+            actor, _, parsed_session_id, rate_limit = self._authorize(session_id, action="voice-agent-start")
+            self._require_idempotency_key()
+            service = self.dependencies.managed_agents
+            if service is None:
+                raise VoiceApiProblem(
+                    status=503,
+                    code="VOICE_AGENT_NOT_CONFIGURED",
+                    message="The managed voice agent is not configured for this environment.",
+                )
+            issued = self.dependencies.token_service.issue(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                session_id=parsed_session_id,
+                role="PUBLISHER",
+                now=datetime.now(UTC),
+            )
+            result = service.start(tenant_id=actor.tenant_id, session_id=parsed_session_id, customer_uid=issued.uid)
+            response = jsonify(result)
+            self._rate_limit_headers(response, rate_limit)
+            return response
+        except VoiceApiProblem as problem:
+            return self._problem(problem)
+        except ManagedAgentUnavailable:
+            return self._problem(
+                VoiceApiProblem(
+                    status=503,
+                    code="VOICE_AGENT_UNAVAILABLE",
+                    message="The managed voice agent could not be confirmed.",
+                )
+            )
+
+    def stop_agent(self, session_id: str) -> ResponseReturnValue:
+        try:
+            actor, parsed_session_id, rate_limit = self._authorize_control(
+                session_id, action="voice-agent-stop", limit=20
+            )
+            self._require_idempotency_key()
+            service = self.dependencies.managed_agents
+            if service is None:
+                raise VoiceApiProblem(
+                    status=503,
+                    code="VOICE_AGENT_NOT_CONFIGURED",
+                    message="The managed voice agent is not configured for this environment.",
+                )
+            result = service.stop(tenant_id=actor.tenant_id, session_id=parsed_session_id)
+            response = jsonify(result)
+            self._rate_limit_headers(response, rate_limit)
+            return response
+        except VoiceApiProblem as problem:
+            return self._problem(problem)
+        except ManagedAgentUnavailable:
+            return self._problem(
+                VoiceApiProblem(
+                    status=503,
+                    code="VOICE_AGENT_UNAVAILABLE",
+                    message="The managed voice agent stop was not confirmed.",
+                )
+            )
 
     def grant_consent(self, session_id: str) -> ResponseReturnValue:
         try:
@@ -384,6 +451,15 @@ class VoiceApi:
         if parsed.version != 7:
             raise VoiceApiProblem(status=404, code="RESOURCE_NOT_FOUND", message="Session was not found.")
         return parsed
+
+    @staticmethod
+    def _require_idempotency_key() -> str:
+        value = request.headers.get("Idempotency-Key", "")
+        if not 16 <= len(value) <= 128 or not value.isascii():
+            raise VoiceApiProblem(
+                status=400, code="IDEMPOTENCY_KEY_REQUIRED", message="A valid Idempotency-Key is required."
+            )
+        return value
 
     def _success(self, issued: IssuedAgoraToken, rate_limit: RateLimitDecision) -> Response:
         response = jsonify(

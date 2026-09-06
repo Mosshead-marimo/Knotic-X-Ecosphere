@@ -43,7 +43,7 @@ const STATUS_DOT_CLASS: Record<CallStatus, string> = {
  * backend and its governed tools.
  */
 export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }: VoiceCallPanelProps) {
-  const { status, errorMessage, muted, join, leave, toggleMute } = useAgoraCall(
+  const { status, errorMessage, muted, audioBlocked, join, leave, toggleMute, resumeAudio } = useAgoraCall(
     sessionId,
     apiBaseUrl,
     csrfToken,
@@ -90,6 +90,7 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }
           {errorMessage}
         </p>
       ) : null}
+      {audioBlocked ? <button type="button" onClick={resumeAudio} className="mb-4 rounded-xl border border-ops-amber/40 bg-ops-amber/10 px-4 py-3 text-sm text-ops-amber">Enable agent audio</button> : null}
 
       <div className="mt-6 flex items-center gap-4">
         {showEndCallButton ? (

@@ -233,6 +233,35 @@ Version 1 event types are:
 
 Events are immutable. Consumers ignore unknown event types only when they have opted into forward-compatible projection behavior; exhaustive business consumers must stop and alert. A breaking payload change requires `event_version: 2` or a new event type, with dual-publish/migration documented by the compatibility policy.
 
+## Operator console and managed voice additions
+
+The Next.js same-origin gateway owns `/api/v1/*` in the browser and streams request and response bodies to the private Flask origin. It forwards only allow-listed correlation, content, CSRF, idempotency, conditional, and SSE recovery headers. Browser code never receives the backend origin or server credentials.
+
+| Method and path | Roles | Result semantics |
+|---|---|---|
+| `GET /api/v1/console/sessions` | `ADMIN`, `SUPERVISOR`, `SALES_REP` | Tenant-scoped cursor page; validates status and page size. |
+| `GET /api/v1/console/sessions/{session_id}` | Operator roles | Safe transcript and persisted sales/operation projections. |
+| `GET /api/v1/console/stream` | Operator roles | Redis Stream SSE with durable IDs, keepalive, `Last-Event-ID`, and degraded event. |
+| `POST /api/v1/console/sessions/{session_id}/handoff` | Operator roles | Returns `requested`; never implies assignment. Requires expected version, CSRF, and idempotency. |
+| `GET /api/v1/console/analytics` | Operator roles | Aggregate-only tenant metrics for a bounded day range. |
+| `GET /api/v1/console/knowledge/documents` | `ADMIN`, `SUPERVISOR` | Tenant documents and durable index state. |
+| `POST /api/v1/console/knowledge/documents` | `ADMIN`, `SUPERVISOR` | UTF-8 TXT/Markdown multipart upload; returns `queued`/`pending`. |
+| `POST /api/v1/console/knowledge/documents/{document_id}/deactivate` | `ADMIN`, `SUPERVISOR` | Reversible tombstone; `confirmed` means only the database transition is committed. |
+| `POST /api/v1/console/knowledge/documents/{document_id}/reindex` | `ADMIN`, `SUPERVISOR` | Enqueues MCP knowledge work and returns `queued`. |
+| `GET /api/v1/console/integrations` | Operator roles | Sanitized provider/MCP state without credentials or payloads. |
+| `POST /api/v1/console/integrations` | `ADMIN`, `SUPERVISOR` | Requests tenant MCP registration; requires CSRF and idempotency and returns `requested`, never active. |
+| `GET /api/v1/console/system` | Operator roles | Safe service, schema, database, cache, and MCP readiness. |
+| `GET /api/v1/console/pending-work` | Operator roles | Durable external work states. |
+| `POST /api/v1/console/pending-work/{work_id}/retry` | `ADMIN`, `SUPERVISOR` | Only allow-listed retryable states become `queued`. |
+| `POST /api/v1/sessions/{session_id}/voice/agent` | Authorized call participant | Starts one deduplicated Agora managed agent after consent; only an Agora acknowledgment yields `confirmed`. |
+| `DELETE /api/v1/sessions/{session_id}/voice/agent` | Authorized call participant | Stops the recorded managed agent; provider failure is not reported as success. |
+
+Operational action states are lower-case at the public boundary: `confirmed`, `requested`, `queued`, `pending`, and `failed`. A queued request is never a confirmed external action. Knowledge uploads are limited to 5,000,000 bytes, strict UTF-8, `.txt` or `.md`, and an allow-listed text MIME type. Their normalized SHA-256 checksum and tenant ownership are persisted; source content is chunked inside the tenant transaction and indexing is handled asynchronously through `MCP_KNOWLEDGE` pending work.
+
+MCP registration accepts only a display name, public HTTPS server URL without embedded credentials/query/fragment, `STREAMABLE_HTTP` or legacy `SSE` transport, declared authentication scheme, and an allow-listed capability set. It never accepts secret values. The durable state begins as `requested`; platform validation must verify DNS resolution, egress, TLS, tool schemas, scopes, quotas, ownership, and deployment-managed credentials before a separate activation workflow may set it active.
+
+Agora Conversational AI is configured server-side with ARES ASR, OpenAI TTS, AI VAD/interruption, and a private OpenAI-compatible Flask/LangGraph URL. Managed-environment startup requires all Agora REST, OpenAI TTS, and private LLM credentials. The browser sees only short-lived RTC credentials and the confirmed agent UID.
+
 ## Contract examples
 
 ### Create a session

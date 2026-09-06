@@ -29,6 +29,7 @@ If a task conflicts with a higher-priority document, stop and report the conflic
 | 4 | `PHASE_4_REALTIME_VOICE.md` | Low-latency Agora voice with correct interruption |
 | 5 | `PHASE_5_INTEGRATIONS.md` | Confirmed CRM, calendar, follow-up, and handoff actions |
 | 6 | `PHASE_6_PRODUCTION_READINESS.md` | Secure, observable, recoverable production deployment |
+| 7 | `PHASE_7_FRONTEND_DESIGN.md` | Clean, interactive, accessible frontend design across every customer-facing page |
 
 ## Task ID format
 

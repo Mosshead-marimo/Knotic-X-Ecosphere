@@ -63,6 +63,7 @@ Use one of these values for each phase: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`,
 | 4 | Realtime Agora voice experience | IN_PROGRESS |
 | 5 | CRM, calendar, follow-up, and handoff | IN_PROGRESS |
 | 6 | Hardening, observability, testing, and deployment | NOT_STARTED |
+| 7 | Interactive frontend design (Superdesign-assisted) | NOT_STARTED |
 
 ---
 
@@ -782,6 +783,15 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: Added timestamped HMAC-SHA256 webhook verification with replay protection, tenant/provider quota guards, exact HTTPS egress origin enforcement, content-free integration metrics, a six-panel operations dashboard, five actionable alerts, SLOs, access-review requirements, and webhook/quota/credential-compromise/disaster-recovery runbooks. Tests simulate tampering, replay, stale/future timestamps, quota exhaustion/recovery, and egress bypass attempts.
 - Verification: Focused integration security/operations/observability suite -> `16 passed`; full non-integration Python suite -> `389 passed, 28 deselected`; Ruff format -> `154 files already formatted`; Ruff lint -> passed; mypy -> `80 source files`; frontend ESLint and TypeScript checks -> passed under Node `24.19.0`; API/data/MCP/operations validators and both secret scans -> passed; deliberate-secret scanner self-test -> passed; conversation evaluation -> all six metrics `1.0`; npm audit -> `0 vulnerabilities`; pip-audit -> no known vulnerabilities (workspace-only packages skipped because they are not published on PyPI); `uv lock --check` and `git diff --check` -> passed. The aggregate `npm run quality` wrapper cannot run on this host because recursive `npm` resolves the machine-wide Node `22.21.1`/npm `10.9.4`; its gates were run directly with the pinned Node `24.19.0` runtime and pinned npm `11.17.0` CLI where applicable.
 - Blocker: No dated production provider account/scope review, real quota/load evidence, deployed egress-policy evidence, credential-rotation evidence, or incident-drill record exists in this workspace. The production gate cannot truthfully pass until release owners attach and approve those artifacts.
+
+### 2026-09-05 — Added Phase 7 — Interactive Frontend Design
+
+- Phase: 7 (new phase, `P7-T001`–`P7-T005`)
+- Files: `docs/phases/PHASE_7_FRONTEND_DESIGN.md` (new), `docs/phases/README.md` (added Phase 7 to the phase-file index), `docs/CHANGES_MADE.md` (added Phase 7 to the status table, this entry).
+- Status: Not started — documentation only in this change
+- Summary: Frontend work had no standalone phase before this; the only frontend task that existed was `P4-T002` (the voice call UI) inside Phase 4. This adds a dedicated phase for redesigning every customer-facing page to a clean, interactive design, built with the Superdesign tool one target at a time (per Superdesign's own SOP — never batch multiple pages into a single design pass) and implemented as real, accessible, responsive Next.js UI. `P7-T001` establishes design tokens from Superdesign's repo-init output; `P7-T002` and `P7-T003` redesign the home page and the voice call experience respectively (the only two pages that exist today); `P7-T003` is explicitly constrained to not change any Phase 4 voice state-machine behavior (`useAgoraCall`'s states, consent flow, error handling) — only its visual presentation; `P7-T004` adds interaction/motion polish; `P7-T005` is the phase's accessibility/responsive/cross-browser certification gate.
+- Verification: N/A — no design or code work has started. This change only adds the phase document and index/status updates.
+- Follow-up: `Phase 7`'s entry criteria require `superdesign login` and `superdesign init` to have actually completed with `.superdesign/init/` present in the repo; as of this entry that directory does not exist yet, so no task in this phase can start until that's confirmed. Once init completes, the first concrete step is `P7-T001` (extract design tokens), followed by asking, per the Superdesign flow, which single page or component to design first — not proposing a batch of pages.
 
 ## Maintenance rules
 

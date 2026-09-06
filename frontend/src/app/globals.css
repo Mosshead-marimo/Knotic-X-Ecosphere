@@ -14,3 +14,22 @@
 .text-balance {
   text-wrap: balance;
 }
+
+/* Visible keyboard-focus state for every interactive element, site-wide, so no link or button
+   relies on hover alone to signal it's interactive (P7-T004). */
+:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

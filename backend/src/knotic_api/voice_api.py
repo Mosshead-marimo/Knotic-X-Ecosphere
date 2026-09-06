@@ -29,12 +29,25 @@ from knotic_api.security import (
     SecurityDependencyUnavailable,
 )
 from knotic_api.voice.agora_token import Role
+from knotic_api.voice.event_sync import (
+    VoiceControlEvent,
+    VoiceEventSequenceConflict,
+    VoiceEventStoreUnavailable,
+    VoiceEventSynchronizer,
+)
+from knotic_api.voice.privacy import (
+    VoiceConsentRequest,
+    VoiceConsentRequired,
+    VoicePrivacyService,
+    VoicePrivacyStoreUnavailable,
+)
 from knotic_api.voice.session_service import (
     AgoraSessionDenied,
     AgoraSessionStoreUnavailable,
     AgoraSessionTokenService,
     IssuedAgoraToken,
 )
+from knotic_api.voice.telemetry import VoiceObservability, VoiceStage, VoiceTraceContext
 
 
 class VoiceTokenRequest(BaseModel):
@@ -51,6 +64,9 @@ class VoiceDependencies:
     token_service: AgoraSessionTokenService
     agora_app_id: str
     allowed_origins: frozenset[str]
+    event_synchronizer: VoiceEventSynchronizer
+    privacy: VoicePrivacyService
+    telemetry: VoiceObservability
 
 
 class VoiceApiProblem(Exception):
@@ -75,6 +91,157 @@ class VoiceApi:
         self.app.add_url_rule(
             "/api/v1/sessions/<session_id>/voice/token", view_func=self.revoke_token, methods=["DELETE"]
         )
+        self.app.add_url_rule(
+            "/api/v1/sessions/<session_id>/voice/events", view_func=self.accept_event, methods=["POST"]
+        )
+        self.app.add_url_rule(
+            "/api/v1/sessions/<session_id>/voice/events", view_func=self.reconcile_events, methods=["GET"]
+        )
+        self.app.add_url_rule(
+            "/api/v1/sessions/<session_id>/voice/consent", view_func=self.grant_consent, methods=["POST"]
+        )
+
+    def grant_consent(self, session_id: str) -> ResponseReturnValue:
+        try:
+            actor, parsed_session_id, rate_limit = self._authorize_control(session_id, action="voice-consent", limit=10)
+            idempotency_key = request.headers.get("Idempotency-Key")
+            if request.mimetype != "application/json" or not idempotency_key:
+                raise VoiceApiProblem(
+                    status=400, code="INVALID_CONSENT_REQUEST", message="A JSON consent request is required."
+                )
+            try:
+                consent_request = VoiceConsentRequest.model_validate_json(request.get_data(cache=True))
+            except Exception as error:
+                raise VoiceApiProblem(
+                    status=422, code="VALIDATION_FAILED", message="Voice consent validation failed."
+                ) from error
+            if idempotency_key != str(consent_request.consent_id):
+                raise VoiceApiProblem(
+                    status=409, code="IDEMPOTENCY_CONFLICT", message="Consent idempotency key does not match."
+                )
+            consent = self.dependencies.privacy.grant(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                session_id=parsed_session_id,
+                request=consent_request,
+                now=datetime.now(UTC),
+            )
+            response = jsonify(
+                consent_id=str(consent.consent_id),
+                policy_version=consent.policy_version,
+                media_region=consent.media_region,
+                recording_allowed=False,
+                expires_at=consent.expires_at.isoformat().replace("+00:00", "Z"),
+            )
+            self._rate_limit_headers(response, rate_limit)
+            return response
+        except VoiceApiProblem as problem:
+            return self._problem(problem)
+        except ValueError:
+            return self._problem(
+                VoiceApiProblem(status=409, code="VOICE_POLICY_DENIED", message="Voice policy denied the request.")
+            )
+        except (SecurityDependencyUnavailable, VoicePrivacyStoreUnavailable):
+            return self._problem(self._dependency_problem())
+
+    def accept_event(self, session_id: str) -> ResponseReturnValue:
+        try:
+            actor, parsed_session_id, rate_limit = self._authorize_control(session_id, action="voice-event-write")
+            idempotency_key = request.headers.get("Idempotency-Key")
+            if not idempotency_key or not 16 <= len(idempotency_key) <= 128:
+                raise VoiceApiProblem(
+                    status=400, code="IDEMPOTENCY_KEY_REQUIRED", message="A valid Idempotency-Key is required."
+                )
+            if request.mimetype != "application/json":
+                raise VoiceApiProblem(
+                    status=415, code="UNSUPPORTED_MEDIA_TYPE", message="Content-Type must be application/json."
+                )
+            try:
+                event = VoiceControlEvent.model_validate_json(request.get_data(cache=True))
+            except Exception as error:
+                raise VoiceApiProblem(
+                    status=422, code="VALIDATION_FAILED", message="Voice event validation failed."
+                ) from error
+            if idempotency_key != str(event.event_id):
+                raise VoiceApiProblem(
+                    status=409,
+                    code="IDEMPOTENCY_CONFLICT",
+                    message="Idempotency-Key must identify the submitted voice event.",
+                )
+            with self.dependencies.telemetry.stage(
+                VoiceStage.CAPTURE,
+                VoiceTraceContext(correlation_id=event.event_id, session_id=parsed_session_id),
+            ) as trace_result:
+                acknowledged = self.dependencies.event_synchronizer.accept(
+                    tenant_id=actor.tenant_id, session_id=parsed_session_id, event=event
+                )
+                trace_result["outcome"] = "success"
+            response = jsonify(
+                event_id=str(acknowledged.event_id),
+                stream_id=str(acknowledged.stream_id),
+                acknowledged_sequence=acknowledged.acknowledged_sequence,
+                server_sequence=acknowledged.server_sequence,
+                duplicate=acknowledged.duplicate,
+            )
+            self._rate_limit_headers(response, rate_limit)
+            return response
+        except VoiceEventSequenceConflict as conflict:
+            response = jsonify(
+                error={
+                    "code": "VOICE_EVENT_SEQUENCE_CONFLICT",
+                    "message": "The next voice event sequence does not match.",
+                    "details": {"expected_sequence": conflict.expected_sequence},
+                }
+            )
+            response.status_code = 409
+            return response
+        except LookupError:
+            return self._problem(
+                VoiceApiProblem(status=404, code="RESOURCE_NOT_FOUND", message="Session was not found.")
+            )
+        except VoiceApiProblem as problem:
+            return self._problem(problem)
+        except (SecurityDependencyUnavailable, VoiceEventStoreUnavailable):
+            return self._problem(self._dependency_problem())
+        except Exception:
+            self.app.logger.exception("unhandled voice event synchronization failure")
+            return self._problem(self._internal_problem())
+
+    def reconcile_events(self, session_id: str) -> ResponseReturnValue:
+        try:
+            actor, parsed_session_id, rate_limit = self._authorize_control(session_id, action="voice-event-read")
+            try:
+                after = int(request.args.get("after", "0"))
+                limit = int(request.args.get("limit", "100"))
+                events = self.dependencies.event_synchronizer.reconcile(
+                    tenant_id=actor.tenant_id, session_id=parsed_session_id, after=after, limit=limit
+                )
+            except ValueError as error:
+                raise VoiceApiProblem(
+                    status=422, code="VALIDATION_FAILED", message="Replay cursor validation failed."
+                ) from error
+            response = jsonify(
+                events=[
+                    {
+                        "event_id": str(event.event_id),
+                        "stream_id": str(event.stream_id),
+                        "acknowledged_sequence": event.acknowledged_sequence,
+                        "server_sequence": event.server_sequence,
+                        "duplicate": True,
+                    }
+                    for event in events
+                ],
+                next_after=events[-1].server_sequence if events else after,
+            )
+            self._rate_limit_headers(response, rate_limit)
+            return response
+        except VoiceApiProblem as problem:
+            return self._problem(problem)
+        except (SecurityDependencyUnavailable, VoiceEventStoreUnavailable):
+            return self._problem(self._dependency_problem())
+        except Exception:
+            self.app.logger.exception("unhandled voice event reconciliation failure")
+            return self._problem(self._internal_problem())
 
     def issue_token(self, session_id: str) -> ResponseReturnValue:
         try:
@@ -89,9 +256,13 @@ class VoiceApi:
             return self._success(issued, rate_limit)
         except VoiceApiProblem as problem:
             return self._problem(problem)
+        except VoiceConsentRequired:
+            return self._problem(
+                VoiceApiProblem(status=409, code="VOICE_CONSENT_REQUIRED", message="Voice consent is required.")
+            )
         except AgoraSessionDenied as denied:
             return self._problem(VoiceApiProblem(status=409, code="VOICE_SESSION_DENIED", message=denied.reason))
-        except (SecurityDependencyUnavailable, AgoraSessionStoreUnavailable):
+        except (SecurityDependencyUnavailable, AgoraSessionStoreUnavailable, VoicePrivacyStoreUnavailable):
             return self._problem(self._dependency_problem())
         except Exception:
             self.app.logger.exception("unhandled voice token issuance failure")
@@ -110,9 +281,13 @@ class VoiceApi:
             return self._success(issued, rate_limit)
         except VoiceApiProblem as problem:
             return self._problem(problem)
+        except VoiceConsentRequired:
+            return self._problem(
+                VoiceApiProblem(status=409, code="VOICE_CONSENT_REQUIRED", message="Voice consent is required.")
+            )
         except AgoraSessionDenied as denied:
             return self._problem(VoiceApiProblem(status=409, code="VOICE_SESSION_DENIED", message=denied.reason))
-        except (SecurityDependencyUnavailable, AgoraSessionStoreUnavailable):
+        except (SecurityDependencyUnavailable, AgoraSessionStoreUnavailable, VoicePrivacyStoreUnavailable):
             return self._problem(self._dependency_problem())
         except Exception:
             self.app.logger.exception("unhandled voice token renewal failure")
@@ -120,22 +295,42 @@ class VoiceApi:
 
     def revoke_token(self, session_id: str) -> ResponseReturnValue:
         try:
-            actor, _role, parsed_session_id, rate_limit = self._authorize(session_id, action="voice-token-revoke")
+            actor, parsed_session_id, rate_limit = self._authorize_control(
+                session_id, action="voice-token-revoke", limit=20
+            )
             self.dependencies.token_service.revoke(
                 tenant_id=actor.tenant_id, actor_id=actor.actor_id, session_id=parsed_session_id
+            )
+            self.dependencies.privacy.revoke(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                session_id=parsed_session_id,
+                now=datetime.now(UTC),
             )
             response = jsonify(status="revoked")
             self._rate_limit_headers(response, rate_limit)
             return response
         except VoiceApiProblem as problem:
             return self._problem(problem)
-        except (SecurityDependencyUnavailable, AgoraSessionStoreUnavailable):
+        except (SecurityDependencyUnavailable, AgoraSessionStoreUnavailable, VoicePrivacyStoreUnavailable):
             return self._problem(self._dependency_problem())
         except Exception:
             self.app.logger.exception("unhandled voice token revocation failure")
             return self._problem(self._internal_problem())
 
     def _authorize(self, session_id: str, *, action: str) -> tuple[AuthenticatedActor, Role, UUID, RateLimitDecision]:
+        actor, parsed_session_id, rate_limit = self._authorize_control(session_id, action=action, limit=20)
+        self.dependencies.privacy.require(
+            tenant_id=actor.tenant_id,
+            actor_id=actor.actor_id,
+            session_id=parsed_session_id,
+            now=datetime.now(UTC),
+        )
+        return actor, self._role(), parsed_session_id, rate_limit
+
+    def _authorize_control(
+        self, session_id: str, *, action: str, limit: int = 120
+    ) -> tuple[AuthenticatedActor, UUID, RateLimitDecision]:
         authenticated = self.dependencies.browser_sessions.authenticate(request.cookies.get("knotic_session"))
         if authenticated is None:
             raise VoiceApiProblem(status=401, code="AUTHENTICATION_REQUIRED", message="Authentication is required.")
@@ -145,15 +340,14 @@ class VoiceApi:
             raise VoiceApiProblem(status=403, code="ORIGIN_DENIED", message="Request origin is not allowed.")
         if not self.dependencies.browser_sessions.verify_csrf(browser_session, request.headers.get("X-CSRF-Token")):
             raise VoiceApiProblem(status=403, code="CSRF_FAILED", message="CSRF validation failed.")
-        rate_limit = self.dependencies.rate_limiter.check(actor, action=action, limit=20)
+        rate_limit = self.dependencies.rate_limiter.check(actor, action=action, limit=limit)
         if not rate_limit.allowed:
             raise VoiceApiProblem(
                 status=429, code="RATE_LIMITED", message="Rate limit exceeded.", rate_limit=rate_limit
             )
         parsed_session_id = self._session_id(session_id)
         self._require_active_session(actor, parsed_session_id)
-        role = self._role()
-        return actor, role, parsed_session_id, rate_limit
+        return actor, parsed_session_id, rate_limit
 
     def _require_active_session(self, actor: AuthenticatedActor, session_id: UUID) -> None:
         read = self.dependencies.active_states.load(actor.tenant_id, session_id)

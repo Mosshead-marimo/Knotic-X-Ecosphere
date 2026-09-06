@@ -5,6 +5,10 @@ const requirements = new Map([
   ["docs/RELEASE.md", ["immutable", "SBOM", "backward-compatible", "canary", "bake window"]],
   ["docs/ROLLBACK.md", ["last known-good", "forward fix", "idempotency", "provider-confirmed"]],
   ["docs/INCIDENT_RESPONSE.md", ["Incident commander", "SEV-1", "correlation IDs", "on-call"]],
+  [
+    "docs/INTEGRATION_OPERATIONS.md",
+    ["Service-level objectives", "Provider quotas and egress", "Webhook response runbook", "Access review", "Disaster exercises", "INCOMPLETE"],
+  ],
 ]);
 
 const failures = [];

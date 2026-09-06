@@ -226,7 +226,7 @@ for (const [path, pathItem] of Object.entries(specification.paths ?? {})) {
   }
 }
 
-record(operationCount === 14, `Expected 14 operations, found ${operationCount}`);
+record(operationCount === 17, `Expected 17 operations, found ${operationCount}`);
 
 const expectedErrorCodes = ["400", "401", "403", "404", "409", "415", "422", "429", "500", "503", "504"];
 for (const code of expectedErrorCodes) record(documentation.includes(`| \`${code}\``), `Narrative error mapping is missing HTTP ${code}`);

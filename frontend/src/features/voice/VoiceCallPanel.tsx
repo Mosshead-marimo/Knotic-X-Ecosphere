@@ -7,6 +7,7 @@ export interface VoiceCallPanelProps {
   sessionId: string;
   apiBaseUrl: string;
   csrfToken: string;
+  mediaRegion: string;
 }
 
 const STATUS_LABEL: Record<CallStatus, string> = {
@@ -28,8 +29,13 @@ const STATUS_LABEL: Record<CallStatus, string> = {
  * ever claims a call, payment, booking, or CRM action succeeded; that authority stays with the
  * backend and its governed tools.
  */
-export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken }: VoiceCallPanelProps) {
-  const { status, errorMessage, muted, join, leave, toggleMute } = useAgoraCall(sessionId, apiBaseUrl, csrfToken);
+export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken, mediaRegion }: VoiceCallPanelProps) {
+  const { status, errorMessage, muted, join, leave, toggleMute } = useAgoraCall(
+    sessionId,
+    apiBaseUrl,
+    csrfToken,
+    mediaRegion,
+  );
   const [consentGiven, setConsentGiven] = useState(false);
 
   const isConnecting = status === "connecting" || status === "requesting-permission";
@@ -41,7 +47,7 @@ export function VoiceCallPanel({ sessionId, apiBaseUrl, csrfToken }: VoiceCallPa
   return (
     <section aria-label="Voice call">
       <p>
-        Starting a call records and processes your audio to provide this service.{" "}
+        Starting a call processes your audio in real time. Raw audio is not recorded by default.{" "}
         <label>
           <input
             type="checkbox"

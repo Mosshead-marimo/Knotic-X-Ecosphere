@@ -1,0 +1,18 @@
+groups:
+  - name: knotic-realtime-voice
+    rules:
+      - alert: VoiceFirstAudioLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(knotic_voice_stage_duration_seconds_bucket{stage="first_audio",outcome="success"}[5m]))) > 1.5
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Voice time-to-first-audio p95 exceeds 1.5 seconds"}
+      - alert: VoiceInterruptionLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(knotic_voice_stage_duration_seconds_bucket{stage="interruption",outcome="success"}[5m]))) > 0.3
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "Barge-in detection-to-stop p95 exceeds 300 ms"}
+      - alert: VoiceFailureRateHigh
+        expr: sum(rate(knotic_voice_turns_total{outcome="failure"}[10m])) / clamp_min(sum(rate(knotic_voice_turns_total[10m])), 0.000001) > 0.02
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "Realtime voice turn failure ratio exceeds 2 percent"}

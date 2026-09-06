@@ -1,0 +1,28 @@
+groups:
+  - name: knotic-integrations
+    rules:
+      - alert: IntegrationWebhookAttackDetected
+        expr: sum(rate(knotic_integration_webhook_rejections_total[5m])) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "One or more integration webhooks failed authentication or replay checks"}
+      - alert: IntegrationProviderQuotaNearExhaustion
+        expr: sum by (provider) (rate(knotic_integration_provider_quota_denials_total[5m])) > 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Local provider quota guard is rejecting calls"}
+      - alert: IntegrationPendingWorkStale
+        expr: sum(knotic_integration_pending_work{status=~"PENDING|FAILED_RETRYABLE"}) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "Integration reconciliation work has remained pending for 15 minutes"}
+      - alert: IntegrationDeadLetterPresent
+        expr: sum(knotic_integration_pending_work{status="DEAD_LETTER"}) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Integration work requires operator replay or remediation"}
+      - alert: IntegrationTruthDiscrepancy
+        expr: sum(increase(knotic_integration_discrepancies_total[5m])) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Internal transaction status disagrees with authoritative provider truth"}

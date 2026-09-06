@@ -61,7 +61,7 @@ Use one of these values for each phase: `NOT_STARTED`, `IN_PROGRESS`, `BLOCKED`,
 | 2 | Adaptive sales workflow | COMPLETE |
 | 3 | MCP tools and grounded knowledge | IN_PROGRESS |
 | 4 | Realtime Agora voice experience | IN_PROGRESS |
-| 5 | CRM, calendar, follow-up, and handoff | NOT_STARTED |
+| 5 | CRM, calendar, follow-up, and handoff | IN_PROGRESS |
 | 6 | Hardening, observability, testing, and deployment | NOT_STARTED |
 
 ---
@@ -698,6 +698,90 @@ Add a new entry for each meaningful code, configuration, schema, infrastructure,
 - Summary: `BargeInPolicy` rejects a voice-activity burst as a false positive unless it clears both a minimum confidence and a minimum duration, so a brief noise spike or cough cannot interrupt playback. `BargeInController.interrupt` cancels the given `P4-T004` `SpeechOutputSession` immediately (prioritizing input over output, per FR-02/ADR-005) and returns an `InterruptionRecord` carrying the exact delivered and truncated text; calling it again for the same, already-interrupted session returns the identical record rather than moving the boundary, so repeated barge-in and near-simultaneous ("race") interrupt calls are both safe. Because each `SpeechOutputSession` owns its own cancellation state, interrupting two different sessions in quick succession ("rapid-turn") never lets one response's boundary leak into another's. `should_resume_previous_topic` is a separate, explicit decision: it resumes the interrupted topic when the customer's interruption never became a real utterance (a false start) or still references the same topic, and treats anything else as a topic change so the agent addresses what was actually just said rather than continuing to talk over it.
 - Verification: Not run in this session — no working sandbox shell was available, so `ruff`, `mypy`, and `pytest` could not be executed here. Added unit tests covering: low-confidence and too-brief bursts rejected as false positives; a confident, sustained burst accepted; invalid policy bounds rejected; `should_interrupt` matching the configured policy; a mid-playback interruption recording the correct delivered/truncated boundary and halting the stream; repeated interruption of the same session keeping the first boundary; two near-simultaneous interrupt calls producing one consistent boundary; two separate sessions' interruptions staying independent; resuming after a false start; resuming when the new utterance still references the previous topic; and not resuming after an actual topic change. Before treating `P4-T005` as complete, run `pytest backend/tests`, `ruff check backend/src backend/tests`, and `mypy backend/src`.
 - Follow-up: `should_resume_previous_topic`'s topic match is a simple case-insensitive substring check on plain strings, not yet wired to `SalesState.current_topic` or the graph's actual next-action routing — that integration, plus the real voice-activity detector feeding `VoiceActivitySignal` from a live Agora session, are follow-ups. With `P4-T001` through `P4-T005` implemented at the unit level, Phase 4's remaining tasks (`P4-T006` synchronizing voice events with backend state, `P4-T007` recovery/graceful termination, `P4-T008` privacy/consent/abuse controls, `P4-T009` observability, `P4-T010` performance certification) and the phase gate itself are still outstanding, and none of this session's verification commands have actually been run — see each entry above for the exact commands still needed.
+
+### 2026-09-05 — Implemented durable realtime voice event synchronization
+
+- Phase: 4 (`P4-T006`, GitHub #70)
+- Files: `backend/src/knotic_api/voice/event_sync.py`, `backend/src/knotic_api/voice_api.py`, `backend/src/knotic_api/app.py`, `backend/migrations/versions/20260905_0009_voice_event_sync.py`, `backend/tests/test_voice_event_sync.py`, `backend/tests/test_postgres_schema.py`, `frontend/src/features/voice/voiceEventSync.ts`, `frontend/src/features/voice/useAgoraCall.ts`, `docs/API_CONTRACTS.md`, `docs/DATA_MODEL.md`, `docs/contracts/openapi.v1.json`, `scripts/validate-api-contract.mjs`, `docs/phases/PHASE_4_REALTIME_VOICE.md`, this file.
+- Status: Implemented and locally verified; PostgreSQL/Redis integration is delegated to the mandatory pull-request service job because the local Docker daemon is unavailable.
+- Summary: Added a versioned, UUIDv7 voice control-event envelope with a 2 KiB non-sensitive payload boundary; per-tab ordered browser outboxes; UUIDv7 idempotency keys; strict gap/conflict handling; exact duplicate acknowledgement replay; session-wide durable server ordering; reconnect replay; PostgreSQL row serialization, uniqueness constraints, forced RLS, and least-privilege grants. Agora connection, mute, and end transitions now enter the ordered outbox, and online recovery flushes pending events without storing audio, transcripts, cookies, or credentials.
+- Verification: `uv run pytest -m "not integration" -q` -> `300 passed, 27 deselected`; `uv run mypy` -> `Success: no issues found in 67 source files`; focused voice tests -> `16 passed`; `npm run lint --workspace frontend` -> passed with Node `24.19.0`/npm `11.17.0`; `npm run typecheck --workspace frontend` -> passed; `npm run build --workspace frontend` -> production build passed; `node scripts/validate-api-contract.mjs` -> `16 operations, 47 schemas, 10 event types, 13 examples`; `git diff --check` -> passed. Alembic offline generation reaches a pre-existing inspection-only migration that cannot run against Alembic's mock connection; the new migration is imported and will be executed by the PR's PostgreSQL integration job.
+
+### 2026-09-05 — Implemented bounded voice recovery and graceful termination
+
+- Phase: 4 (`P4-T007`, GitHub #71)
+- Files: `backend/src/knotic_api/voice/recovery.py`, `backend/migrations/versions/20260905_0010_voice_recovery.py`, `backend/tests/test_voice_recovery.py`, `backend/src/knotic_api/app.py`, `backend/tests/test_postgres_schema.py`, `frontend/src/features/voice/useAgoraCall.ts`, `docs/DATA_MODEL.md`, `docs/phases/PHASE_4_REALTIME_VOICE.md`, this file.
+- Status: Implemented and locally verified; PostgreSQL execution remains covered by the pull-request integration service.
+- Summary: Added a typed recovery policy for Agora token/connection, speech input/output, network, backend, Redis, and policy failures; bounded attempts and overall deadlines; approved speech-provider failover; terminal safe messaging; durable forced-RLS recovery checkpoints with optimistic concurrency; and backend-restart resume semantics. The browser now performs bounded token-renewal retries, enforces a 20-second reconnect deadline, disables the microphone before teardown, and bounds event flush and server-side token revocation so a failed dependency cannot trap the user in an ending state.
+- Verification: `uv run pytest backend/tests/test_voice_recovery.py -q` -> `11 passed`; focused mypy -> passed; frontend lint and typecheck -> passed. Full-suite and production-build evidence is recorded after the stacked change is finalized.
+
+### 2026-09-05 — Enforced realtime voice privacy and consent
+
+- Phase: 4 (`P4-T008`, GitHub #72)
+- Files: `backend/src/knotic_api/voice/privacy.py`, `backend/migrations/versions/20260905_0011_voice_consent.py`, `backend/tests/test_voice_privacy.py`, `backend/src/knotic_api/voice_api.py`, `backend/src/knotic_api/config.py`, `backend/src/knotic_api/app.py`, `backend/tests/test_voice_api.py`, `backend/tests/test_postgres_schema.py`, `frontend/src/features/voice/VoiceCallPanel.tsx`, `frontend/src/features/voice/useAgoraCall.ts`, `frontend/src/features/voice/voiceEventSync.ts`, `frontend/src/app/call/[sessionId]/page.tsx`, `.env.example`, `docs/API_CONTRACTS.md`, `docs/DATA_MODEL.md`, `docs/CONFIGURATION.md`, `docs/contracts/openapi.v1.json`, `scripts/validate-api-contract.mjs`, `docs/phases/PHASE_4_REALTIME_VOICE.md`, this file.
+- Status: Implemented and verified, including the pull-request PostgreSQL consent/migration service job.
+- Summary: Token issue/renew now fail closed without unexpired actor/session consent. Consent is versioned, UUIDv7-idempotent, limited to approved media regions, expires after eight hours, revokes on call end, cascades on erasure, and is protected by forced RLS. Raw recording is prohibited by request validation and a database check. The browser accurately states that audio is processed but not recorded by default, and unmute synchronizes policy state before enabling the track; any failure leaves the microphone disabled. Worker adapters receive an explicit `consent_active && !muted` transmission gate. Existing per-action rate limits provide abuse controls, with consent limited separately to 10 requests per window.
+- Verification: `uv run pytest backend/tests/test_voice_privacy.py backend/tests/test_config.py -q` -> `14 passed`; focused mypy -> passed; frontend lint and typecheck -> passed. Added PostgreSQL service tests for consent-required token issuance and migration/table presence.
+
+### 2026-09-05 — Added content-free end-to-end voice observability
+
+- Phase: 4 (`P4-T009`, GitHub #73)
+- Files: `backend/src/knotic_api/voice/telemetry.py`, `backend/tests/test_voice_telemetry.py`, `backend/src/knotic_api/voice_api.py`, `backend/src/knotic_api/app.py`, `infra/observability/prometheus/voice-alerts.yaml`, `infra/observability/grafana/voice-dashboard.json`, `infra/observability/README.md`, `docs/VOICE_OBSERVABILITY.md`, `docs/phases/PHASE_4_REALTIME_VOICE.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added per-turn OpenTelemetry-compatible stage spans for capture, transcription, workflow, governed tools, synthesis, first audio, and interruption; correlated trace-only session/turn/response IDs; low-cardinality latency, failure, outcome, and quality metrics; private metrics export; executable content/redaction tests; a Grafana dashboard; Prometheus latency/failure alerts; and an operator isolation runbook. The instrumentation interface cannot accept transcript, audio, prompt, customer, token, cookie, or provider-payload content.
+- Verification: Focused telemetry tests validate every stage span, correlation, metric labels, content exclusion, dashboard panels, and alert coverage. Full stack verification follows in `P4-T010`.
+
+### 2026-09-05 — Implemented the realtime certification gate; external certification remains open
+
+- Phase: 4 (`P4-T010`, GitHub #74)
+- Files: `backend/src/knotic_api/voice/certification.py`, `backend/tests/test_voice_certification.py`, `backend/pyproject.toml`, `tests/performance/voice-release-policy.v1.json`, `tests/e2e/voice-compatibility-matrix.v1.json`, `docs/VOICE_RELEASE_GATE.md`, `docs/phases/PHASE_4_REALTIME_VOICE.md`, this file.
+- Status: Release-gate implementation complete; production certification `INCOMPLETE`. `P4-T010`, #74, and the Phase 4 gate intentionally remain open.
+- Summary: Added strict evidence schemas; nearest-rank p50/p95/p99 computation; first-audio and interruption sample floors; error, capacity, soak, quota, browser, device/network, and matrix gates; commit/evidence binding; mandatory provider-approval reference; deterministic pass/fail/incomplete results; and Ed25519 signing and verification. The checked-in matrix covers current/previous major browsers, desktop/mobile OSes, microphone/headset classes, impaired/offline networks, and critical call scenarios. A failed measurable threshold is always `FAIL`; absent external approval is `INCOMPLETE`, never a fabricated pass.
+- Verification: `uv run pytest backend/tests/test_voice_certification.py -q` -> `4 passed`; full non-integration suite -> `325 passed, 28 deselected`; Ruff -> passed on 136 formatted files; mypy -> `71 source files`; frontend lint/typecheck/production build -> passed; API/data/MCP/operations validators -> passed; frontend/repository secret scans -> passed; conversation evaluation -> all six metrics `1.0`; `uv lock --check` and `git diff --check` -> passed. No signed performance report was generated because there is no trusted release key or production-like provider evidence in this workspace.
+- Blocker: Phase 4 entry criteria require approved Agora and speech-provider production accounts, quotas, regions, and data policies. Run the documented 1,000-turn/100-concurrent-call/120-minute matrix and soak against the exact candidate commit, then have a trusted release owner sign a `PASS` report.
+
+### 2026-09-05 — Implemented consent-aware follow-up creation and delivery
+
+- Phase: 5 (`P5-T006`, GitHub #82)
+- Files: `mcp/src/knotic_mcp/followup.py`, `mcp/src/knotic_mcp/app.py`, `mcp/src/knotic_mcp/registry.py`, `mcp/tests/test_followup.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added typed follow-up channels and delivery states, exact-match approved-template policy, tenant/lead/channel consent checks, scheduled delivery validation, deterministic provider idempotency, provider acknowledgement validation, callback deduplication and monotonic delivery transitions, unsubscribe cancellation, and append-only transition audit records. The MCP handler returns `PENDING` after enqueue acceptance and exposes final delivery only after a provider callback.
+- Verification: `uv run pytest mcp/tests/test_followup.py mcp/tests/test_gateway.py -q` -> `20 passed`; `uv run mypy mcp/src` -> passed. Ruff passed after removing one unused import; full repository verification follows at the top of the stack.
+- Follow-up: Production deployments must inject durable consent/follow-up stores and a real approved messaging provider adapter; the checked-in adapter is a deterministic sandbox boundary and never contains live credentials.
+
+### 2026-09-05 — Implemented deterministic FR-13 escalation policy
+
+- Phase: 5 (`P5-T007`, GitHub #83)
+- Files: `backend/src/knotic_api/workflow/escalation.py`, `backend/src/knotic_api/workflow/next_action.py`, `backend/src/knotic_api/workflow/__init__.py`, `backend/tests/test_escalation_policy.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added a strict policy input/decision model for all eight FR-13 triggers, fixed precedence, priority assignment, unauthorized-discount blocking, a versioned persistence payload containing every trigger reason, and an enforced next-action override that routes to governed handoff regardless of conflicting free-form model intent.
+- Verification: Focused escalation and next-action suite -> `27 passed`; `uv run mypy backend/src` -> passed; Ruff and repository-wide verification follow at the top of the stack.
+
+### 2026-09-05 — Implemented structured human handoff
+
+- Phase: 5 (`P5-T008`, GitHub #84)
+- Files: `mcp/src/knotic_mcp/handoff.py`, `mcp/src/knotic_mcp/app.py`, `mcp/src/knotic_mcp/registry.py`, `mcp/tests/test_handoff.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added a strict complete FR-13 context model, deterministic skills routing, unavailable-agent fallback queue, provider-confirmed request records, agent-bound acknowledgement, truthful customer status messages, idempotent context transfer, and pending-versus-transferred semantics. The gateway now exposes both handoff tools through the closed authenticated registry.
+- Verification: Focused handoff/gateway suite -> `19 passed`; `uv run mypy mcp/src` and Ruff MCP checks -> passed. The added confirmed-transfer path is included in the final top-of-stack suite.
+
+### 2026-09-05 — Implemented outcomes and provider reconciliation
+
+- Phase: 5 (`P5-T009`, GitHub #85)
+- Files: `backend/src/knotic_api/integrations/__init__.py`, `backend/src/knotic_api/integrations/reconciliation.py`, `backend/tests/test_integration_reconciliation.py`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Implemented and locally verified.
+- Summary: Added all six constrained FR-14 outcomes with append-only replacement history, provider-confirmation enforcement for booked demos, pending-work scheduling, bounded exponential retries, dead-letter visibility, operator-only replay, callback deduplication/conflict rejection, provider-truth convergence, and discrepancy alerts when an internally confirmed transaction is missing or failed at its authority.
+- Verification: Focused outcome/reconciliation suite -> `5 passed`; `uv run mypy backend/src` -> passed; Ruff passed after a single unused-import cleanup. Full repository verification follows at the top of the stack.
+- Follow-up: Production composition must back the defined work/ledger ports with PostgreSQL outbox/inbox tables and schedule `run_due` through the selected worker platform.
+
+### 2026-09-05 — Implemented the integration security and operations certification controls
+
+- Phase: 5 (`P5-T010`, GitHub #86)
+- Files: `mcp/src/knotic_mcp/integration_security.py`, `mcp/src/knotic_mcp/observability.py`, `mcp/tests/test_integration_security.py`, `mcp/tests/test_integration_operations.py`, `infra/observability/prometheus/integration-alerts.yaml`, `infra/observability/grafana/integration-dashboard.json`, `infra/observability/README.md`, `docs/INTEGRATION_OPERATIONS.md`, `scripts/validate-operations-docs.mjs`, `docs/phases/PHASE_5_INTEGRATIONS.md`, this file.
+- Status: Certification controls implemented and locally verified; production certification `INCOMPLETE`. `P5-T010`, #86, and the Phase 5 gate remain open.
+- Summary: Added timestamped HMAC-SHA256 webhook verification with replay protection, tenant/provider quota guards, exact HTTPS egress origin enforcement, content-free integration metrics, a six-panel operations dashboard, five actionable alerts, SLOs, access-review requirements, and webhook/quota/credential-compromise/disaster-recovery runbooks. Tests simulate tampering, replay, stale/future timestamps, quota exhaustion/recovery, and egress bypass attempts.
+- Verification: Focused integration security/operations/observability suite -> `16 passed`; full non-integration Python suite -> `389 passed, 28 deselected`; Ruff format -> `154 files already formatted`; Ruff lint -> passed; mypy -> `80 source files`; frontend ESLint and TypeScript checks -> passed under Node `24.19.0`; API/data/MCP/operations validators and both secret scans -> passed; deliberate-secret scanner self-test -> passed; conversation evaluation -> all six metrics `1.0`; npm audit -> `0 vulnerabilities`; pip-audit -> no known vulnerabilities (workspace-only packages skipped because they are not published on PyPI); `uv lock --check` and `git diff --check` -> passed. The aggregate `npm run quality` wrapper cannot run on this host because recursive `npm` resolves the machine-wide Node `22.21.1`/npm `10.9.4`; its gates were run directly with the pinned Node `24.19.0` runtime and pinned npm `11.17.0` CLI where applicable.
+- Blocker: No dated production provider account/scope review, real quota/load evidence, deployed egress-policy evidence, credential-rotation evidence, or incident-drill record exists in this workspace. The production gate cannot truthfully pass until release owners attach and approve those artifacts.
 
 ## Maintenance rules
 

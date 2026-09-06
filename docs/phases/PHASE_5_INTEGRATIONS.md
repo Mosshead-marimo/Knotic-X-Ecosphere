@@ -46,28 +46,28 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 - Acceptance: Booking occurs only after explicit customer selection and is claimed only after provider confirmation.
 - Verify: Race, duplicate, expired slot, provider timeout, partial failure, and replay tests.
 
-### [ ] P5-T006 — Implement follow-up creation and delivery
+### [x] P5-T006 — Implement follow-up creation and delivery
 
 - Dependencies: P5-T001, P5-T003.
 - Implement: Approved templates/content, channel consent, scheduling, idempotency, delivery status, provider confirmation, unsubscribe policy, and audit.
 - Acceptance: Follow-ups respect consent and are not marked delivered from an enqueue response alone.
 - Verify: Consent, duplicate, scheduling, bounce/failure, and provider callback tests.
 
-### [ ] P5-T007 — Implement deterministic escalation policy
+### [x] P5-T007 — Implement deterministic escalation policy
 
 - Dependencies: P2-T005–P2-T007.
 - Implement: Explicit request, enterprise, negotiation, security/legal, low-confidence, frustration, unsupported-question, and unauthorized-discount triggers; priority and approval rules.
 - Acceptance: High-impact paths cannot be overridden by free-form model output; trigger reason is persisted.
 - Verify: Trigger matrix, precedence, false-positive, and bypass tests.
 
-### [ ] P5-T008 — Implement structured human handoff
+### [x] P5-T008 — Implement structured human handoff
 
 - Dependencies: P5-T007, P5-T003.
 - Implement: Required FR-13 context packet, summary validation, target routing, availability, acknowledgement, transfer status, customer messaging, and fallback queue.
 - Acceptance: Every handoff contains complete current structured context and never claims acceptance without acknowledgement.
 - Verify: Completeness, unavailable-agent, timeout, duplicate, and transfer tests.
 
-### [ ] P5-T009 — Implement outcomes and reconciliation
+### [x] P5-T009 — Implement outcomes and reconciliation
 
 - Dependencies: P5-T003, P5-T005, P5-T006, P5-T008.
 - Implement: All FR-14 outcomes, allowed transitions, provider reconciliation jobs, pending work, dead-letter handling, operator replay, and discrepancy alerts.
@@ -80,8 +80,8 @@ Execute business actions through authenticated, idempotent, provider-confirmed i
 - Implement: Audit dashboards, provider quotas, alerts, runbooks, access review, webhook signature verification, egress allowlists, disaster exercises, and SLOs.
 - Acceptance: Integration failures and credential compromise scenarios have tested detection and response procedures.
 - Verify: Security review, webhook attacks, quota/load test, and incident drill.
+- Status: Control implementation and sandbox attack/load tests are complete. Production certification remains `INCOMPLETE` pending dated access-review, actual provider quota/egress, credential-rotation, and incident-drill evidence for the release environment.
 
 ## Phase gate
 
 All actions are provider-confirmed, idempotent, reconciled, secure, and observable; booking and handoff races pass; failures remain pending/recoverable without fabricated success.
-

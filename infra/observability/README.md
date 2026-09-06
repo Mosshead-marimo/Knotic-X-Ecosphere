@@ -10,6 +10,11 @@ attributes onlyâ€”never tenant IDs, session IDs, prompts, transcripts, or custom
 
 See `docs/STATE_DATA_SLO.md` for targets, expected load, and response procedures.
 
+`prometheus/voice-alerts.yaml` and `grafana/voice-dashboard.json` cover realtime capture,
+transcription, workflow, tool, synthesis, first-audio, and interruption stages. Voice metrics use
+only bounded stage/outcome/component/error/quality labels. Correlation, session, turn, and response
+identifiers are trace-only; audio and transcript content are never operational telemetry fields.
+
 `prometheus/mcp-rag-alerts.yaml` defines the MCP/RAG alerts and
 `grafana/mcp-rag-dashboard.json` is the corresponding dashboard. The MCP gateway exposes its own
 `/internal/metrics` route under the same private-route and bearer-token rules as the backend
@@ -18,3 +23,8 @@ terminal status, safe error code, cache status, provider name, and domain onlyâ€
 session IDs, query text, or retrieved content.
 
 See `docs/MCP_RAG_SLO.md` for targets, expected load, and response procedures.
+
+`prometheus/integration-alerts.yaml` and `grafana/integration-dashboard.json` cover authenticated
+webhooks, provider quota protection, provider-action outcomes, reconciliation backlog,
+dead-letter work, and provider-truth discrepancies. See `docs/INTEGRATION_OPERATIONS.md` for the
+SLOs, access-review requirements, incident runbooks, and mandatory disaster exercises.

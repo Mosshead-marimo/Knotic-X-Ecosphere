@@ -10,6 +10,7 @@ from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import redis
@@ -25,8 +26,28 @@ from .cache import (
     ToolResultCache,
     cache_key,
 )
+from .calendar import CalendarProviderPort, InMemoryCalendarProvider, validate_timezone
 from .config import McpSettings, load_mcp_settings
 from .contracts import ToolEnvelope, ToolError, ToolInvocation, ToolStatus, TrustedContext
+from .crm import CrmLead, CrmProviderPort, InMemoryCrmProvider, find_lead
+from .followup import FollowupChannel, FollowupService, sandbox_followup_service
+from .handoff import HandoffContext, HandoffPriority, HandoffService, HandoffStatus, sandbox_handoff_service
+from .integrations import (
+    CircuitBreaker,
+    CredentialStore,
+    CredentialUnavailable,
+    IdempotencyConflict,
+    IdempotencyStore,
+    InMemoryCredentialStore,
+    InMemoryIdempotencyStore,
+    IntegrationCredential,
+    IntegrationProviderError,
+    RetryPolicy,
+    call_with_resilience,
+    idempotent_write,
+    request_fingerprint,
+    require_credential,
+)
 from .knowledge import KnowledgeQueryService, KnowledgeStore, PgvectorRetrievalService
 from .observability import McpObservability
 from .registry import ToolRegistry, arguments_are_valid
@@ -43,7 +64,43 @@ _PROVIDER_FOR_TOOL: dict[str, str] = {
     "security.get_information": "knowledge_retrieval",
     "pricing.get_quote": "pricing_catalog",
     "pricing.compare_plans": "pricing_catalog",
+    "crm.get_lead": "crm_provider",
+    "crm.create_lead": "crm_provider",
+    "crm.update_lead": "crm_provider",
+    "crm.add_note": "crm_provider",
+    "crm.add_call_summary": "crm_provider",
+    "calendar.get_slots": "calendar_provider",
+    "calendar.book_meeting": "calendar_provider",
+    "followup.create": "messaging_provider",
+    "handoff.request_agent": "handoff_provider",
+    "handoff.transfer_context": "handoff_provider",
 }
+
+
+class _SandboxCredentialStore:
+    """Auto-provisions a sandbox credential per (tenant, provider) on first use.
+
+    A real deployment injects a :class:`CredentialStore` backed by encrypted, rotated,
+    least-privileged credentials configured per tenant ahead of time; this sandbox default exists
+    so the fake CRM/calendar adapters remain independently usable (and testable) without any
+    setup, while still exercising the exact same credential-isolation code path a production
+    adapter uses.
+    """
+
+    def __init__(self) -> None:
+        self._delegate = InMemoryCredentialStore()
+
+    def get(self, *, tenant_id: UUID, provider: str) -> IntegrationCredential | None:
+        credential = self._delegate.get(tenant_id=tenant_id, provider=provider)
+        if credential is None:
+            # A placeholder marker, not a real credential -- this store never talks to a live
+            # provider, so there is no secret here to protect.
+            placeholder = "sandbox"
+            credential = IntegrationCredential(tenant_id=tenant_id, provider=provider, access_token=placeholder)
+            self._delegate.put(credential)
+        return credential
+
+
 _RETRYABLE_FAILURE_CODES = frozenset({"TIMEOUT", "DEPENDENCY_UNAVAILABLE"})
 
 AsgiSend = Callable[[dict[str, Any]], Awaitable[None]]
@@ -127,6 +184,20 @@ def _succeeded(invocation: ToolInvocation, data: dict[str, Any]) -> ToolEnvelope
     )
 
 
+def _pending(
+    invocation: ToolInvocation, data: dict[str, Any], *, provider_reference: str | None = None
+) -> ToolEnvelope:
+    return ToolEnvelope(
+        tool_call_id=invocation.tool_call_id,
+        tool=invocation.tool,
+        version=invocation.version,
+        status=ToolStatus.PENDING,
+        data=data,
+        provider_reference=provider_reference,
+        started_at=datetime.now(UTC),
+    )
+
+
 def create_app(
     settings: McpSettings | None = None,
     *,
@@ -137,6 +208,12 @@ def create_app(
     tool_cache: ToolResultCache | None = None,
     provider_health: ProviderHealthTracker | None = None,
     observability: McpObservability | None = None,
+    crm_provider: CrmProviderPort | None = None,
+    calendar_provider: CalendarProviderPort | None = None,
+    followup_service: FollowupService | None = None,
+    handoff_service: HandoffService | None = None,
+    credential_store: CredentialStore | None = None,
+    idempotency_store: IdempotencyStore | None = None,
 ) -> AsgiApp:
     resolved, sink, limiter = settings or load_mcp_settings(), audit_sink or InMemoryAuditSink(), RateLimiter()
     tool_registry = registry or ToolRegistry()
@@ -150,6 +227,462 @@ def create_app(
         environment=resolved.environment.value,
         otlp_endpoint=resolved.otel_exporter_otlp_endpoint,
     )
+    crm = crm_provider or InMemoryCrmProvider()
+    calendar_service = calendar_provider or InMemoryCalendarProvider()
+    followups = followup_service or sandbox_followup_service()
+    handoffs = handoff_service or sandbox_handoff_service()
+    credentials = credential_store or _SandboxCredentialStore()
+    idempotency = idempotency_store or InMemoryIdempotencyStore()
+    crm_breaker, calendar_breaker, messaging_breaker, handoff_breaker = (
+        CircuitBreaker(),
+        CircuitBreaker(),
+        CircuitBreaker(),
+        CircuitBreaker(),
+    )
+    integration_retry = RetryPolicy()
+
+    def _credential_or_failure(
+        provider: str, invocation: ToolInvocation, context: TrustedContext
+    ) -> ToolEnvelope | None:
+        try:
+            require_credential(credentials, tenant_id=context.tenant_id, provider=provider, now=datetime.now(UTC))
+        except CredentialUnavailable:
+            return _failed(
+                invocation, "DEPENDENCY_UNAVAILABLE", f"No {provider} credential is available for this tenant."
+            )
+        return None
+
+    def _lead_payload(lead: CrmLead) -> dict[str, Any]:
+        return {
+            "lead_id": str(lead.lead_id),
+            "company": lead.company,
+            "email": lead.email,
+            "phone": lead.phone,
+            "provider_reference": lead.provider_lead_id,
+            "version": lead.version,
+            "fields": dict(lead.fields),
+        }
+
+    def crm_get_lead(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("crm", invocation, context)
+        if problem is not None:
+            return problem
+        lookup: dict[str, object] = dict(invocation.arguments["lookup"])
+        try:
+            candidates = call_with_resilience(
+                provider="crm_provider",
+                breaker=crm_breaker,
+                retry=integration_retry,
+                deadline_at=context.deadline_at,
+                operation=lambda: crm.find_leads(tenant_id=context.tenant_id, lookup=lookup),
+            )
+        except IntegrationProviderError as error:
+            return _failed(invocation, error.code, error.message, retryable=error.retryable)
+        try:
+            result = find_lead(candidates, lookup=lookup)
+        except ValueError:
+            return _failed(invocation, "INVALID_ARGUMENT", "lookup must supply at least one identifying field.")
+        return _succeeded(
+            invocation, {"found": result.found, "lead": _lead_payload(result.lead) if result.lead else None}
+        )
+
+    def crm_create_lead(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("crm", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        idempotency_key = invocation.idempotency_key
+        lead_input: dict[str, object] = dict(invocation.arguments["lead"])
+
+        def perform() -> ToolEnvelope:
+            try:
+                lead = call_with_resilience(
+                    provider="crm_provider",
+                    breaker=crm_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: crm.create_lead(tenant_id=context.tenant_id, lead=lead_input),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _succeeded(
+                invocation,
+                {"lead_id": str(lead.lead_id), "status": "SUCCEEDED", "provider_reference": lead.provider_lead_id},
+            )
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(
+                invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
+            )
+
+    def crm_update_lead(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("crm", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        idempotency_key = invocation.idempotency_key
+        args = invocation.arguments
+        changes: dict[str, object] = dict(args["changes"])
+
+        def perform() -> ToolEnvelope:
+            try:
+                lead = call_with_resilience(
+                    provider="crm_provider",
+                    breaker=crm_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: crm.update_lead(
+                        tenant_id=context.tenant_id,
+                        lead_id=UUID(str(args["lead_id"])),
+                        expected_version=int(args["expected_version"]),
+                        changes=changes,
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _succeeded(
+                invocation, {"lead_id": str(lead.lead_id), "version": lead.version, "status": "SUCCEEDED"}
+            )
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(
+                invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
+            )
+
+    def crm_add_note(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("crm", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        idempotency_key = invocation.idempotency_key
+        args = invocation.arguments
+
+        def perform() -> ToolEnvelope:
+            try:
+                note_id = call_with_resilience(
+                    provider="crm_provider",
+                    breaker=crm_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: crm.add_note(
+                        tenant_id=context.tenant_id, lead_id=UUID(str(args["lead_id"])), note=str(args["note"])
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _succeeded(invocation, {"note_id": note_id, "status": "SUCCEEDED"})
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(
+                invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
+            )
+
+    def crm_add_call_summary(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("crm", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        idempotency_key = invocation.idempotency_key
+        args = invocation.arguments
+
+        def perform() -> ToolEnvelope:
+            try:
+                activity_id = call_with_resilience(
+                    provider="crm_provider",
+                    breaker=crm_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: crm.add_call_summary(
+                        tenant_id=context.tenant_id,
+                        lead_id=UUID(str(args["lead_id"])),
+                        session_id=UUID(str(args["session_id"])),
+                        summary=str(args["summary"]),
+                        outcome=str(args["outcome"]),
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _succeeded(invocation, {"activity_id": activity_id, "status": "SUCCEEDED"})
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(
+                invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
+            )
+
+    def calendar_get_slots(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("calendar", invocation, context)
+        if problem is not None:
+            return problem
+        args = invocation.arguments
+        try:
+            tzinfo = validate_timezone(str(args["timezone"]))
+        except IntegrationProviderError as error:
+            return _failed(invocation, error.code, error.message)
+        try:
+            window_from = datetime.fromisoformat(str(args["from"]))
+            window_to = datetime.fromisoformat(str(args["to"]))
+        except ValueError:
+            return _failed(invocation, "INVALID_ARGUMENT", "'from' and 'to' must be RFC3339 date-times.")
+        if window_from.tzinfo is None or window_to.tzinfo is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "'from' and 'to' must include a timezone offset.")
+        try:
+            snapshot = call_with_resilience(
+                provider="calendar_provider",
+                breaker=calendar_breaker,
+                retry=integration_retry,
+                deadline_at=context.deadline_at,
+                operation=lambda: calendar_service.list_slots(
+                    tenant_id=context.tenant_id,
+                    window_from=window_from,
+                    window_to=window_to,
+                    duration_minutes=int(args["duration_minutes"]),
+                    now=datetime.now(UTC),
+                ),
+            )
+        except IntegrationProviderError as error:
+            return _failed(invocation, error.code, error.message, retryable=error.retryable)
+        slots = [
+            {
+                "slot_id": slot.slot_id,
+                "starts_at": slot.starts_at.astimezone(tzinfo).isoformat(),
+                "ends_at": slot.ends_at.astimezone(tzinfo).isoformat(),
+                "timezone": str(args["timezone"]),
+                "organizer": slot.organizer,
+            }
+            for slot in snapshot.slots
+        ]
+        return _succeeded(invocation, {"slots": slots, "snapshot_expires_at": snapshot.expires_at.isoformat()})
+
+    def calendar_book_meeting(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("calendar", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        idempotency_key = invocation.idempotency_key
+        args = invocation.arguments
+
+        def perform() -> ToolEnvelope:
+            try:
+                booked = call_with_resilience(
+                    provider="calendar_provider",
+                    breaker=calendar_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: calendar_service.book(
+                        tenant_id=context.tenant_id,
+                        slot_id=str(args["slot_id"]),
+                        snapshot_reference=str(args["snapshot_reference"]),
+                        attendees=[str(item) for item in args["attendees"]],
+                        title=str(args["title"]),
+                        now=datetime.now(UTC),
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _succeeded(
+                invocation,
+                {
+                    "meeting_id": str(booked.meeting_id),
+                    "status": "CONFIRMED",
+                    "provider_reference": booked.provider_reference,
+                },
+            )
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(
+                invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
+            )
+
+    def followup_create(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("messaging", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        idempotency_key = invocation.idempotency_key
+        args = invocation.arguments
+        try:
+            scheduled_at = datetime.fromisoformat(str(args["scheduled_at"])).astimezone(UTC)
+            channel = FollowupChannel(str(args["channel"]))
+        except (ValueError, TypeError):
+            return _failed(invocation, "INVALID_ARGUMENT", "channel and scheduled_at are invalid.")
+
+        def perform() -> ToolEnvelope:
+            try:
+                followup = call_with_resilience(
+                    provider="messaging_provider",
+                    breaker=messaging_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: followups.create(
+                        tenant_id=context.tenant_id,
+                        lead_id=UUID(str(args["lead_id"])),
+                        channel=channel,
+                        scheduled_at=scheduled_at,
+                        content=str(args["content"]),
+                        idempotency_key=idempotency_key,
+                    ),
+                )
+            except IntegrationProviderError as error:
+                if error.code == "PENDING_CONFIRMATION":
+                    return _pending(invocation, {"followup_id": str(invocation.tool_call_id), "status": "PENDING"})
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _pending(
+                invocation,
+                {"followup_id": str(followup.followup_id), "status": "PENDING"},
+                provider_reference=followup.provider_reference,
+            )
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(
+                invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key was already used with different arguments."
+            )
+
+    def handoff_request_agent(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("handoff", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        key = invocation.idempotency_key
+
+        def perform() -> ToolEnvelope:
+            try:
+                record = call_with_resilience(
+                    provider="handoff_provider",
+                    breaker=handoff_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: handoffs.request(
+                        tenant_id=context.tenant_id,
+                        reason=str(invocation.arguments["reason"]),
+                        priority=HandoffPriority(str(invocation.arguments["priority"])),
+                        idempotency_key=key,
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            return _succeeded(
+                invocation,
+                {"handoff_id": str(record.handoff_id), "status": record.status.value},
+            )
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key has different arguments.")
+
+    def handoff_transfer_context(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
+        problem = _credential_or_failure("handoff", invocation, context)
+        if problem is not None:
+            return problem
+        if invocation.idempotency_key is None:
+            return _failed(invocation, "INVALID_ARGUMENT", "This tool requires an idempotency key.")
+        key = invocation.idempotency_key
+        arguments = dict(invocation.arguments)
+        handoff_id = UUID(str(arguments.pop("handoff_id")))
+        try:
+            packet = HandoffContext.model_validate(arguments)
+        except ValidationError:
+            return _failed(invocation, "INVALID_ARGUMENT", "The FR-13 handoff context is incomplete or invalid.")
+
+        def perform() -> ToolEnvelope:
+            try:
+                record = call_with_resilience(
+                    provider="handoff_provider",
+                    breaker=handoff_breaker,
+                    retry=integration_retry,
+                    deadline_at=context.deadline_at,
+                    operation=lambda: handoffs.transfer_context(
+                        tenant_id=context.tenant_id,
+                        handoff_id=handoff_id,
+                        context=packet,
+                        idempotency_key=key,
+                    ),
+                )
+            except IntegrationProviderError as error:
+                return _failed(invocation, error.code, error.message, retryable=error.retryable)
+            status = "TRANSFERRED" if record.status == HandoffStatus.TRANSFERRED else "PENDING_CONFIRMATION"
+            data = {"handoff_id": str(record.handoff_id), "status": status}
+            return _succeeded(invocation, data) if status == "TRANSFERRED" else _pending(invocation, data)
+
+        try:
+            return idempotent_write(
+                store=idempotency,
+                tenant_id=context.tenant_id,
+                tool=invocation.tool,
+                idempotency_key=key,
+                request_fingerprint=request_fingerprint(invocation.arguments),
+                perform=perform,
+            )
+        except IdempotencyConflict:
+            return _failed(invocation, "IDEMPOTENCY_CONFLICT", "This idempotency key has different arguments.")
 
     def knowledge_search(context: TrustedContext, invocation: ToolInvocation) -> ToolEnvelope:
         matches = retrieval.search(
@@ -279,6 +812,16 @@ def create_app(
     _register_default("pricing.compare_plans", pricing_compare_plans)
     _register_default("lead.qualify", lead_qualify)
     _register_default("lead.next_action", lead_next_action)
+    _register_default("crm.get_lead", crm_get_lead)
+    _register_default("crm.create_lead", crm_create_lead)
+    _register_default("crm.update_lead", crm_update_lead)
+    _register_default("crm.add_note", crm_add_note)
+    _register_default("crm.add_call_summary", crm_add_call_summary)
+    _register_default("calendar.get_slots", calendar_get_slots)
+    _register_default("calendar.book_meeting", calendar_book_meeting)
+    _register_default("followup.create", followup_create)
+    _register_default("handoff.request_agent", handoff_request_agent)
+    _register_default("handoff.transfer_context", handoff_transfer_context)
     approval = ApprovalPolicy(hmac_key=resolved.auth_token.get_secret_value().encode())
 
     async def app(scope: dict[str, Any], receive: Any, send: AsgiSend) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from uuid import UUID
 
 from .contracts import ToolEnvelope, ToolInvocation, TrustedContext
 
@@ -33,6 +34,17 @@ TOOL_DEFINITIONS = {
     "lead.qualify": ToolDefinition("lead.qualify", 1, "sales:read", "NONE", False, 1000),
     "lead.next_action": ToolDefinition("lead.next_action", 1, "sales:read", "NONE", False, 1000),
     "followup.create": ToolDefinition("followup.create", 1, "followup:write", "POLICY", True, 5000),
+    "crm.get_lead": ToolDefinition("crm.get_lead", 1, "crm:read", "NONE", False, 3000),
+    "crm.create_lead": ToolDefinition("crm.create_lead", 1, "crm:write", "POLICY", True, 5000),
+    "crm.update_lead": ToolDefinition("crm.update_lead", 1, "crm:write", "POLICY", True, 5000),
+    "crm.add_note": ToolDefinition("crm.add_note", 1, "crm:write", "POLICY", True, 5000),
+    "crm.add_call_summary": ToolDefinition("crm.add_call_summary", 1, "crm:write", "POLICY", True, 5000),
+    "calendar.get_slots": ToolDefinition("calendar.get_slots", 1, "calendar:read", "NONE", False, 4000),
+    "calendar.book_meeting": ToolDefinition(
+        "calendar.book_meeting", 1, "calendar:write", "CUSTOMER_CONFIRMATION", True, 6000
+    ),
+    "handoff.request_agent": ToolDefinition("handoff.request_agent", 1, "handoff:write", "POLICY", True, 5000),
+    "handoff.transfer_context": ToolDefinition("handoff.transfer_context", 1, "handoff:write", "POLICY", True, 5000),
 }
 
 
@@ -66,6 +78,24 @@ def _is_nonempty_str(value: object) -> bool:
 
 def _in_bounds(value: object, maximum: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= maximum
+
+
+def _is_uuid_str(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_object(value: object, *, min_properties: int = 0) -> bool:
+    return isinstance(value, dict) and len(value) >= min_properties
+
+
+def _is_nonempty_str_bounded(value: object, *, max_length: int) -> bool:
+    return isinstance(value, str) and 1 <= len(value) <= max_length
 
 
 def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]) -> bool:
@@ -145,5 +175,103 @@ def arguments_are_valid(definition: ToolDefinition, arguments: dict[str, object]
             and isinstance(arguments["stage"], str)
             and arguments["stage"] != ""
             and (arguments["explicit_request"] is None or isinstance(arguments["explicit_request"], str))
+        )
+    if definition.name == "followup.create":
+        return (
+            set(arguments) == {"lead_id", "channel", "scheduled_at", "content"}
+            and _is_uuid_str(arguments["lead_id"])
+            and arguments["channel"] in {"EMAIL", "SMS", "TASK"}
+            and _is_nonempty_str_bounded(arguments["scheduled_at"], max_length=64)
+            and _is_nonempty_str_bounded(arguments["content"], max_length=4000)
+        )
+    if definition.name == "crm.get_lead":
+        return set(arguments) == {"lookup"} and _is_object(arguments["lookup"], min_properties=1)
+    if definition.name == "crm.create_lead":
+        lead = arguments.get("lead")
+        return (
+            set(arguments) == {"lead"}
+            and isinstance(lead, dict)
+            and isinstance(lead.get("company"), str)
+            and lead["company"] != ""
+        )
+    if definition.name == "crm.update_lead":
+        changes = arguments.get("changes")
+        return (
+            set(arguments) == {"lead_id", "expected_version", "changes"}
+            and _is_uuid_str(arguments["lead_id"])
+            and isinstance(arguments["expected_version"], int)
+            and not isinstance(arguments["expected_version"], bool)
+            and arguments["expected_version"] >= 1
+            and _is_object(changes, min_properties=1)
+        )
+    if definition.name == "crm.add_note":
+        return (
+            set(arguments) == {"lead_id", "note"}
+            and _is_uuid_str(arguments["lead_id"])
+            and _is_nonempty_str_bounded(arguments["note"], max_length=8000)
+        )
+    if definition.name == "crm.add_call_summary":
+        return (
+            set(arguments) == {"lead_id", "session_id", "summary", "outcome"}
+            and _is_uuid_str(arguments["lead_id"])
+            and _is_uuid_str(arguments["session_id"])
+            and _is_nonempty_str_bounded(arguments["summary"], max_length=8000)
+            and isinstance(arguments["outcome"], str)
+            and arguments["outcome"] != ""
+        )
+    if definition.name == "calendar.get_slots":
+        return (
+            set(arguments) == {"from", "to", "timezone", "duration_minutes"}
+            and isinstance(arguments["from"], str)
+            and isinstance(arguments["to"], str)
+            and isinstance(arguments["timezone"], str)
+            and arguments["timezone"] != ""
+            and isinstance(arguments["duration_minutes"], int)
+            and not isinstance(arguments["duration_minutes"], bool)
+            and 15 <= arguments["duration_minutes"] <= 240
+        )
+    if definition.name == "calendar.book_meeting":
+        attendees = arguments.get("attendees")
+        return (
+            set(arguments) == {"slot_id", "snapshot_reference", "attendees", "title"}
+            and _is_nonempty_str_bounded(arguments["slot_id"], max_length=256)
+            and _is_nonempty_str_bounded(arguments["snapshot_reference"], max_length=256)
+            and isinstance(attendees, list)
+            and len(attendees) >= 1
+            and all(isinstance(item, str) and item for item in attendees)
+            and isinstance(arguments["title"], str)
+            and arguments["title"] != ""
+        )
+    if definition.name == "handoff.request_agent":
+        return (
+            set(arguments) == {"reason", "priority"}
+            and _is_nonempty_str_bounded(arguments["reason"], max_length=1000)
+            and arguments["priority"] in {"NORMAL", "HIGH", "URGENT"}
+        )
+    if definition.name == "handoff.transfer_context":
+        required = {
+            "handoff_id",
+            "company",
+            "users",
+            "use_cases",
+            "integrations",
+            "competitors",
+            "objections",
+            "qualification_score",
+            "latest_request",
+            "summary",
+        }
+        return (
+            set(arguments) == required
+            and _is_uuid_str(arguments["handoff_id"])
+            and (arguments["company"] is None or isinstance(arguments["company"], str))
+            and (arguments["users"] is None or _in_bounds(arguments["users"], 10_000_000))
+            and all(
+                isinstance(arguments[field], list)
+                for field in ("use_cases", "integrations", "competitors", "objections")
+            )
+            and _in_bounds(arguments["qualification_score"], 100)
+            and (arguments["latest_request"] is None or isinstance(arguments["latest_request"], str))
+            and _is_nonempty_str_bounded(arguments["summary"], max_length=4000)
         )
     return bool(arguments) or not definition.side_effect
